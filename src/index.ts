@@ -81,8 +81,9 @@ async function run() {
   console.log(`New releases curated: ${curatedReleases.length}`);
 
   // Compute genre breakdown from top tracks
+  console.log(`Artist genres fetched: ${Object.keys(artistGenres).length} artists`);
   const genreBreakdown = computeGenreBreakdown(artistGenres);
-  console.log(`Genre breakdown: ${genreBreakdown.map((g) => `${g.label} ${g.pct}%`).join(", ")}`);
+  console.log(`Genre breakdown: ${genreBreakdown.map((g) => `${g.label} ${g.pct}%`).join(", ") || "(none)"}`);
 
   // Search Spotify for each playlist track
   console.log("Searching Spotify for tracks...");
