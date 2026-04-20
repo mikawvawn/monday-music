@@ -65,7 +65,7 @@ async function run() {
   console.log(`Playlist created: ${playlist.url}`);
 
   // Send email
-  await sendEmail(plan.name, plan.description, playlist.url, foundTracks, curatedReleases);
+  await sendEmail(plan.name, plan.description, playlist.url, foundTracks, curatedReleases, topTracks, recentTracks);
 
   console.log("Done!");
 }
