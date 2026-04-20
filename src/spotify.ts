@@ -5,6 +5,7 @@ export interface Track {
   id: string;
   name: string;
   artist: string;
+  artistId: string;
   album: string;
   url: string;
 }
@@ -56,12 +57,13 @@ async function spotifyGet(path: string, token: string, attempt = 0): Promise<unk
 
 export async function getRecentlyPlayed(token: string): Promise<Track[]> {
   const data = (await spotifyGet("/me/player/recently-played?limit=50", token)) as {
-    items: { track: { id: string; name: string; artists: { name: string }[]; album: { name: string }; external_urls: { spotify: string } } }[];
+    items: { track: { id: string; name: string; artists: { id: string; name: string }[]; album: { name: string }; external_urls: { spotify: string } } }[];
   };
   return data.items.map((i) => ({
     id: i.track.id,
     name: i.track.name,
-    artist: i.track.artists[0].name,
+    artist: i.track.artists[0]?.name ?? "",
+    artistId: i.track.artists[0]?.id ?? "",
     album: i.track.album.name,
     url: i.track.external_urls.spotify,
   }));
@@ -69,12 +71,13 @@ export async function getRecentlyPlayed(token: string): Promise<Track[]> {
 
 export async function getTopTracks(token: string): Promise<Track[]> {
   const data = (await spotifyGet("/me/top/tracks?limit=50&time_range=medium_term", token)) as {
-    items: { id: string; name: string; artists: { name: string }[]; album: { name: string }; external_urls: { spotify: string } }[];
+    items: { id: string; name: string; artists: { id: string; name: string }[]; album: { name: string }; external_urls: { spotify: string } }[];
   };
   return data.items.map((t) => ({
     id: t.id,
     name: t.name,
-    artist: t.artists[0].name,
+    artist: t.artists[0]?.name ?? "",
+    artistId: t.artists[0]?.id ?? "",
     album: t.album.name,
     url: t.external_urls.spotify,
   }));
@@ -93,14 +96,15 @@ export async function searchTrack(
 ): Promise<Track | null> {
   const url = `/search?q=${encodeURIComponent(query)}&type=track&limit=1`;
   const data = (await spotifyGet(url, token)) as {
-    tracks: { items: { id: string; name: string; artists: { name: string }[]; album: { name: string }; external_urls: { spotify: string } }[] };
+    tracks: { items: { id: string; name: string; artists: { id: string; name: string }[]; album: { name: string }; external_urls: { spotify: string } }[] };
   };
   const item = data.tracks.items[0];
   if (!item) return null;
   return {
     id: item.id,
     name: item.name,
-    artist: item.artists[0].name,
+    artist: item.artists[0]?.name ?? "",
+    artistId: item.artists[0]?.id ?? "",
     album: item.album.name,
     url: item.external_urls.spotify,
   };
@@ -152,4 +156,38 @@ export async function addTracksToPlaylist(
     return addTracksToPlaylist(playlistId, trackIds, token, attempt + 1);
   }
   if (!res.ok) throw new Error(`Add tracks failed (${res.status}): ${await res.text()}`);
+}
+
+/** Fetch genres for up to 50 artist IDs in one batch call. */
+export async function getTopArtistGenres(
+  artistIds: string[],
+  token: string
+): Promise<Record<string, string[]>> {
+  const unique = [...new Set(artistIds.filter(Boolean))].slice(0, 50);
+  if (unique.length === 0) return {};
+  const data = (await spotifyGet(`/artists?ids=${unique.join(",")}`, token)) as {
+    artists: ({ id: string; genres: string[] } | null)[];
+  };
+  const result: Record<string, string[]> = {};
+  for (const artist of data.artists) {
+    if (artist) result[artist.id] = artist.genres;
+  }
+  return result;
+}
+
+/** Search Spotify for an album and return the cover art URL (300px preferred). */
+export async function searchAlbumArt(
+  artist: string,
+  title: string,
+  token: string
+): Promise<string | null> {
+  const q = encodeURIComponent(`${artist} ${title}`);
+  const data = (await spotifyGet(`/search?q=${q}&type=album&limit=1`, token)) as {
+    albums: { items: { images: { url: string; width: number }[] }[] };
+  };
+  const album = data.albums?.items?.[0];
+  if (!album?.images?.length) return null;
+  // Prefer ~300px image; fall back to smallest available
+  const sorted = [...album.images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
+  return sorted[0].url;
 }
