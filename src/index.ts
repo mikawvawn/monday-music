@@ -81,7 +81,8 @@ async function run() {
   console.log(`New releases curated: ${curatedReleases.length}`);
 
   // Compute genre breakdown from top tracks
-  console.log(`Artist genres fetched: ${Object.keys(artistGenres).length} artists`);
+  const sampleGenres = Object.entries(artistGenres).slice(0, 3).map(([, gs]) => `[${gs.join(",")}]`).join(" | ");
+  console.log(`Artist genres fetched: ${Object.keys(artistGenres).length} artists — sample: ${sampleGenres || "(empty)"}`);
   const genreBreakdown = computeGenreBreakdown(artistGenres);
   console.log(`Genre breakdown: ${genreBreakdown.map((g) => `${g.label} ${g.pct}%`).join(", ") || "(none)"}`);
 
