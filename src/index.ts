@@ -7,11 +7,45 @@ import {
   getUserId,
   createPlaylist,
   addTracksToPlaylist,
+  getTopArtistGenres,
+  searchAlbumArt,
   type Track,
 } from "./spotify.js";
 import { generatePlaylist, curateNewReleases } from "./claude.js";
 import { sendEmail } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
+
+// Map Spotify genre tags into 5 display buckets
+const GENRE_BUCKETS: Record<string, string[]> = {
+  Electronic: ["electronic", "house", "techno", "ambient", "downtempo", "experimental", "idm", "glitch", "drone", "synthwave", "electro", "club", "edm"],
+  Indie:      ["indie", "shoegaze", "noise", "alternative", "post-rock", "folk", "lo-fi", "dream pop", "art rock", "emo", "grunge"],
+  "R&B":      ["r&b", "soul", "funk", "hip hop", "rap", "neo soul", "trap", "pop"],
+  Brazilian:  ["mpb", "bossa nova", "samba", "axé", "pagode", "forró", "baile funk", "tropicália"],
+};
+
+function computeGenreBreakdown(
+  tracks: Track[],
+  artistGenres: Record<string, string[]>
+): { label: string; pct: number }[] {
+  const counts: Record<string, number> = { Electronic: 0, Indie: 0, "R&B": 0, Brazilian: 0, Other: 0 };
+  for (const track of tracks) {
+    const genres = artistGenres[track.artistId] ?? [];
+    let matched = false;
+    for (const [bucket, keywords] of Object.entries(GENRE_BUCKETS)) {
+      if (genres.some((g) => keywords.some((k) => g.toLowerCase().includes(k)))) {
+        counts[bucket]++;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) counts["Other"]++;
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  return Object.entries(counts)
+    .map(([label, n]) => ({ label, pct: Math.round((n / total) * 100) }))
+    .filter((g) => g.pct > 0)
+    .sort((a, b) => b.pct - a.pct);
+}
 
 async function run() {
   console.log("Starting Monday Music...");
@@ -33,16 +67,22 @@ async function run() {
   const topArtists = [...new Set(topTracks.map((t) => t.artist))];
   const recentPlaylistNames = recentPlaylists.map((p) => p.name);
 
-  // Ask Claude for playlist plan + new release curation in parallel
+  // Claude + genre data in parallel
   console.log("Asking Claude for playlist + new release curation...");
-  const [plan, curatedReleases] = await Promise.all([
+  const topArtistIds = [...new Set(topTracks.map((t) => t.artistId).filter(Boolean))];
+  const [plan, curatedReleases, artistGenres] = await Promise.all([
     generatePlaylist(recentTracks, topTracks, recentPlaylistNames),
     curateNewReleases(rawReleases, recentArtists, topArtists),
+    getTopArtistGenres(topArtistIds, token),
   ]);
   console.log(`Playlist: "${plan.name}" (${plan.theme}) | ${plan.tracks.length} tracks suggested`);
   console.log(`New releases curated: ${curatedReleases.length}`);
 
-  // Search Spotify for each track
+  // Compute genre breakdown from top tracks
+  const genreBreakdown = computeGenreBreakdown(topTracks, artistGenres);
+  console.log(`Genre breakdown: ${genreBreakdown.map((g) => `${g.label} ${g.pct}%`).join(", ")}`);
+
+  // Search Spotify for each playlist track
   console.log("Searching Spotify for tracks...");
   const foundTracks: Track[] = [];
   for (const suggestion of plan.tracks) {
@@ -59,13 +99,35 @@ async function run() {
     throw new Error(`Too few tracks found (${foundTracks.length}), aborting`);
   }
 
+  // Enrich releases with album art (sequential to respect rate limits)
+  console.log("Fetching album art...");
+  for (const release of curatedReleases) {
+    if (release.artist || release.title) {
+      const imageUrl = await searchAlbumArt(release.artist || release.title, release.title, token).catch(() => null);
+      if (imageUrl) {
+        release.imageUrl = imageUrl;
+        console.log(`  ✓ Art found for: ${release.artist} — ${release.title}`);
+      }
+    }
+  }
+
   // Create playlist
   const playlist = await createPlaylist(userId, plan.name, plan.description, token);
   await addTracksToPlaylist(playlist.id, foundTracks.map((t) => t.id), token);
   console.log(`Playlist created: ${playlist.url}`);
 
   // Send email
-  await sendEmail(plan.name, plan.description, playlist.url, foundTracks, curatedReleases, topTracks, recentTracks);
+  await sendEmail(
+    plan.name,
+    plan.description,
+    plan.longDescription,
+    playlist.url,
+    foundTracks,
+    curatedReleases,
+    topTracks,
+    recentTracks,
+    genreBreakdown,
+  );
 
   console.log("Done!");
 }
