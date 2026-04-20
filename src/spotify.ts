@@ -133,9 +133,11 @@ export async function createPlaylist(
 export async function addTracksToPlaylist(
   playlistId: string,
   trackIds: string[],
-  token: string
+  token: string,
+  attempt = 0
 ): Promise<void> {
   const uris = trackIds.map((id) => `spotify:track:${id}`);
+  await sleep(1000); // brief pause after playlist creation
   const res = await fetch(`${SPOTIFY_API}/playlists/${playlistId}/tracks`, {
     method: "POST",
     headers: {
@@ -144,5 +146,10 @@ export async function addTracksToPlaylist(
     },
     body: JSON.stringify({ uris }),
   });
-  if (!res.ok) throw new Error(`Add tracks failed: ${await res.text()}`);
+  if (res.status === 429 || res.status >= 500) {
+    if (attempt >= 3) throw new Error(`Add tracks failed after retries: ${await res.text()}`);
+    await sleep((attempt + 1) * 2000);
+    return addTracksToPlaylist(playlistId, trackIds, token, attempt + 1);
+  }
+  if (!res.ok) throw new Error(`Add tracks failed (${res.status}): ${await res.text()}`);
 }
