@@ -5,6 +5,7 @@ import type { NewRelease } from "./newReleases.js";
 interface PlaylistPlan {
   name: string;
   description: string;
+  longDescription: string;
   theme: string;
   tracks: { artist: string; track: string }[];
 }
@@ -15,6 +16,7 @@ export interface CuratedRelease {
   blurb: string;
   source: string;
   url: string;
+  imageUrl?: string;
 }
 
 function parseJson<T>(text: string): T {
@@ -52,9 +54,9 @@ ${recentPlaylistNames.slice(0, 5).join(", ") || "none yet"}
 ${TASTE_PROFILE}
 
 Your job:
-- Pick ONE genre thread that the user has been listening to recently
+- Pick ONE genre thread that feels fresh relative to the recent playlist names
 - Come up with an evocative playlist name (not just the genre name — something atmospheric like "fuzzy & wrecked" or "água e samba")
-- Suggest 20 tracks: ~half from artists the user already knows, ~half new discoveries one level under the obvious names
+- Suggest 18 tracks: ~half from artists Big Mike already knows, ~half new discoveries one level under the obvious names
 - Skew towards artists currently touring or releasing new music
 - Order tracks for good flow: draw in → build → peak → come down
 - No two tracks from the same artist back-to-back
@@ -63,7 +65,8 @@ Respond with ONLY valid JSON, no markdown:
 {
   "name": "playlist name",
   "description": "one sentence capturing the vibe",
-  "theme": "one word genre bucket",
+  "longDescription": "3-4 sentences: describe the playlist's overall mood and arc, mention 2-3 standout artists or moments, explain what makes this selection feel cohesive. Write like a music journalist, not a press release.",
+  "theme": "one word genre bucket: indie|brazilian|electronic|rnb",
   "tracks": [
     { "artist": "Artist Name", "track": "Track Name" }
   ]
@@ -71,7 +74,7 @@ Respond with ONLY valid JSON, no markdown:
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    max_tokens: 1500,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -103,7 +106,7 @@ His top artists: ${topArtists.slice(0, 20).join(", ")}
 Here are new releases/articles from music publications this week:
 ${releaseList}
 
-Pick 5 items that genuinely fit user's taste. Skip anything mainstream, overhyped, or clearly outside his wheelhouse. Prioritize underground, touring artists, and things that connect to his existing taste without being too obvious.
+Pick 5–7 items that genuinely fit Big Mike's taste. Skip anything mainstream, overhyped, or clearly outside his wheelhouse. Prioritize underground, touring artists, and things that connect to his existing taste without being too obvious.
 
 For each pick, write one sentence explaining specifically why it fits his taste — reference his known artists where it helps ("if you're into Just Mustard's noise..."). Keep it direct, no fluff.
 
