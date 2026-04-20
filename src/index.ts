@@ -73,7 +73,10 @@ async function run() {
   const [plan, curatedReleases, artistGenres] = await Promise.all([
     generatePlaylist(recentTracks, topTracks, recentPlaylistNames),
     curateNewReleases(rawReleases, recentArtists, topArtists),
-    getTopArtistGenres(topArtistIds, token),
+    getTopArtistGenres(topArtistIds, token).catch((err) => {
+      console.warn("Genre fetch failed (non-fatal):", err.message);
+      return {} as Record<string, string[]>;
+    }),
   ]);
   console.log(`Playlist: "${plan.name}" (${plan.theme}) | ${plan.tracks.length} tracks suggested`);
   console.log(`New releases curated: ${curatedReleases.length}`);
