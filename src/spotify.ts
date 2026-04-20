@@ -103,12 +103,12 @@ export async function getUserId(token: string): Promise<string> {
 }
 
 export async function createPlaylist(
-  userId: string,
+  _userId: string,
   name: string,
   description: string,
   token: string
 ): Promise<{ id: string; url: string }> {
-  const res = await fetch(`${SPOTIFY_API}/users/${userId}/playlists`, {
+  const res = await fetch(`${SPOTIFY_API}/me/playlists`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
