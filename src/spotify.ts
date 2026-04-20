@@ -165,7 +165,7 @@ export async function getTopArtistsWithGenres(token: string): Promise<Record<str
   };
   const result: Record<string, string[]> = {};
   for (const artist of data.items) {
-    result[artist.id] = artist.genres;
+    result[artist.id] = artist.genres ?? [];
   }
   return result;
 }
