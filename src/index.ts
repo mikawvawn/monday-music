@@ -7,7 +7,7 @@ import {
   getUserId,
   createPlaylist,
   addTracksToPlaylist,
-  getTopArtistGenres,
+  getTopArtistsWithGenres,
   searchAlbumArt,
   type Track,
 } from "./spotify.js";
@@ -69,11 +69,10 @@ async function run() {
 
   // Claude + genre data in parallel
   console.log("Asking Claude for playlist + new release curation...");
-  const topArtistIds = [...new Set(topTracks.map((t) => t.artistId).filter(Boolean))];
   const [plan, curatedReleases, artistGenres] = await Promise.all([
     generatePlaylist(recentTracks, topTracks, recentPlaylistNames),
     curateNewReleases(rawReleases, recentArtists, topArtists),
-    getTopArtistGenres(topArtistIds, token).catch((err) => {
+    getTopArtistsWithGenres(token).catch((err) => {
       console.warn("Genre fetch failed (non-fatal):", err.message);
       return {} as Record<string, string[]>;
     }),
