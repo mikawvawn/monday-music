@@ -19,13 +19,11 @@ async function run() {
   const token = await getAccessToken();
   console.log("Spotify token obtained");
 
-  // Gather listening data in parallel
-  const [recentTracks, topTracks, recentPlaylists, userId] = await Promise.all([
-    getRecentlyPlayed(token),
-    getTopTracks(token),
-    getRecentPlaylists(token),
-    getUserId(token),
-  ]);
+  // Gather listening data sequentially to avoid Spotify rate limits
+  const userId = await getUserId(token);
+  const recentTracks = await getRecentlyPlayed(token);
+  const topTracks = await getTopTracks(token);
+  const recentPlaylists = await getRecentPlaylists(token);
   console.log(`Got ${recentTracks.length} recent tracks, ${topTracks.length} top tracks`);
 
   // Ask Claude to plan the playlist
