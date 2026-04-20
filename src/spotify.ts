@@ -158,19 +158,14 @@ export async function addTracksToPlaylist(
   if (!res.ok) throw new Error(`Add tracks failed (${res.status}): ${await res.text()}`);
 }
 
-/** Fetch genres for up to 50 artist IDs in one batch call. */
-export async function getTopArtistGenres(
-  artistIds: string[],
-  token: string
-): Promise<Record<string, string[]>> {
-  const unique = [...new Set(artistIds.filter(Boolean))].slice(0, 50);
-  if (unique.length === 0) return {};
-  const data = (await spotifyGet(`/artists?ids=${unique.join(",")}`, token)) as {
-    artists: ({ id: string; genres: string[] } | null)[];
+/** Fetch user's top artists (medium term) with genre data. Uses user-top-read scope. */
+export async function getTopArtistsWithGenres(token: string): Promise<Record<string, string[]>> {
+  const data = (await spotifyGet("/me/top/artists?limit=50&time_range=medium_term", token)) as {
+    items: { id: string; name: string; genres: string[] }[];
   };
   const result: Record<string, string[]> = {};
-  for (const artist of data.artists) {
-    if (artist) result[artist.id] = artist.genres;
+  for (const artist of data.items) {
+    result[artist.id] = artist.genres;
   }
   return result;
 }
