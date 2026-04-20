@@ -27,7 +27,7 @@ function computeGenreBreakdown(
   artistGenres: Record<string, string[]>
 ): { label: string; pct: number }[] {
   const counts: Record<string, number> = { Electronic: 0, Indie: 0, "R&B": 0, Brazilian: 0, Other: 0 };
-  const allArtistGenres = Object.values(artistGenres);
+  const allArtistGenres = Object.values(artistGenres).filter((g): g is string[] => Array.isArray(g));
   if (allArtistGenres.length === 0) return [];
   for (const genres of allArtistGenres) {
     let matched = false;
