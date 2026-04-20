@@ -138,7 +138,7 @@ export async function addTracksToPlaylist(
 ): Promise<void> {
   const uris = trackIds.map((id) => `spotify:track:${id}`);
   await sleep(1000); // brief pause after playlist creation
-  const res = await fetch(`${SPOTIFY_API}/playlists/${playlistId}/tracks`, {
+  const res = await fetch(`${SPOTIFY_API}/playlists/${encodeURIComponent(playlistId)}/items`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
