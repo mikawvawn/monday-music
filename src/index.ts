@@ -24,12 +24,12 @@ const GENRE_BUCKETS: Record<string, string[]> = {
 };
 
 function computeGenreBreakdown(
-  tracks: Track[],
   artistGenres: Record<string, string[]>
 ): { label: string; pct: number }[] {
   const counts: Record<string, number> = { Electronic: 0, Indie: 0, "R&B": 0, Brazilian: 0, Other: 0 };
-  for (const track of tracks) {
-    const genres = artistGenres[track.artistId] ?? [];
+  const allArtistGenres = Object.values(artistGenres);
+  if (allArtistGenres.length === 0) return [];
+  for (const genres of allArtistGenres) {
     let matched = false;
     for (const [bucket, keywords] of Object.entries(GENRE_BUCKETS)) {
       if (genres.some((g) => keywords.some((k) => g.toLowerCase().includes(k)))) {
@@ -40,7 +40,7 @@ function computeGenreBreakdown(
     }
     if (!matched) counts["Other"]++;
   }
-  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const total = allArtistGenres.length;
   return Object.entries(counts)
     .map(([label, n]) => ({ label, pct: Math.round((n / total) * 100) }))
     .filter((g) => g.pct > 0)
@@ -81,7 +81,7 @@ async function run() {
   console.log(`New releases curated: ${curatedReleases.length}`);
 
   // Compute genre breakdown from top tracks
-  const genreBreakdown = computeGenreBreakdown(topTracks, artistGenres);
+  const genreBreakdown = computeGenreBreakdown(artistGenres);
   console.log(`Genre breakdown: ${genreBreakdown.map((g) => `${g.label} ${g.pct}%`).join(", ")}`);
 
   // Search Spotify for each playlist track
