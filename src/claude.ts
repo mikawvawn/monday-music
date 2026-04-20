@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Track } from "./spotify.js";
+import type { NewRelease } from "./newReleases.js";
 
 interface PlaylistPlan {
   name: string;
@@ -8,13 +9,32 @@ interface PlaylistPlan {
   tracks: { artist: string; track: string }[];
 }
 
+export interface CuratedRelease {
+  artist: string;
+  title: string;
+  blurb: string;
+  source: string;
+  url: string;
+}
+
+function parseJson<T>(text: string): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const match = text.match(/[\[{][\s\S]*[\]}]/);
+    if (!match) throw new Error(`Unparseable response: ${text.slice(0, 200)}`);
+    return JSON.parse(match[0]) as T;
+  }
+}
+
+const TASTE_PROFILE = `Big Mike's taste: indie rock / noise pop / shoegaze (Just Mustard, feeble little horse, Water from Your Eyes, Horsegirl, Chanel Beads, Alex G, Wednesday, Snail Mail, Slow Pulp), Brazilian / world music (Jorge Ben Jor, Novos Baianos, Milton Nascimento, Djavan), electronic (house, techno, downtempo, experimental, ambient), R&B / soul (Frank Ocean, Thundercat, Blood Orange). He skews underground — one level under obvious names. Already knows Slowdive, Grouper, Adrianne Lenker, Steve Lacy, Tim Maia, Peel Dream Magazine, bdrmm, Mk.gee.`;
+
 export async function generatePlaylist(
   recentTracks: Track[],
   topTracks: Track[],
   recentPlaylistNames: string[]
 ): Promise<PlaylistPlan> {
   const client = new Anthropic();
-
   const recentArtists = [...new Set(recentTracks.map((t) => t.artist))].slice(0, 30);
   const topArtists = [...new Set(topTracks.map((t) => t.artist))].slice(0, 30);
 
@@ -29,11 +49,7 @@ ${topArtists.join(", ")}
 His recent playlist names (to avoid repeating the same genre thread):
 ${recentPlaylistNames.slice(0, 5).join(", ") || "none yet"}
 
-Big Mike's main genre buckets — rotate through these, picking whichever feels freshest given recent playlists:
-1. Indie rock / noise pop / shoegaze / fuzzy guitar (e.g. Just Mustard, feeble little horse, Water from Your Eyes, Horsegirl, Alex G, Wednesday, Snail Mail, Slow Pulp, Chanel Beads)
-2. Brazilian / Latin / world music (e.g. Jorge Ben Jor, Novos Baianos, Milton Nascimento, Djavan, Sergio Mendes, Luiz Melodia)
-3. Electronic — house, techno, downtempo, experimental, ambient
-4. R&B / soul / neo-soul (e.g. Frank Ocean, Thundercat, Blood Orange)
+${TASTE_PROFILE}
 
 Your job:
 - Pick ONE genre thread that feels fresh relative to the recent playlist names
@@ -43,7 +59,7 @@ Your job:
 - Order tracks for good flow: draw in → build → peak → come down
 - No two tracks from the same artist back-to-back
 
-Respond with ONLY valid JSON in this exact format, no markdown:
+Respond with ONLY valid JSON, no markdown:
 {
   "name": "playlist name",
   "description": "one sentence capturing the vibe",
@@ -60,13 +76,54 @@ Respond with ONLY valid JSON in this exact format, no markdown:
   });
 
   const text = message.content[0].type === "text" ? message.content[0].text : "";
+  return parseJson<PlaylistPlan>(text);
+}
 
-  try {
-    return JSON.parse(text) as PlaylistPlan;
-  } catch {
-    // Strip any markdown if present
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error(`Claude returned unparseable response: ${text}`);
-    return JSON.parse(jsonMatch[0]) as PlaylistPlan;
+export async function curateNewReleases(
+  releases: NewRelease[],
+  recentArtists: string[],
+  topArtists: string[]
+): Promise<CuratedRelease[]> {
+  if (releases.length === 0) return [];
+
+  const client = new Anthropic();
+
+  const releaseList = releases
+    .slice(0, 60)
+    .map((r, i) => `${i + 1}. [${r.source}] ${r.artist ? `${r.artist} — ` : ""}${r.title} | ${r.url}\n   ${r.description.slice(0, 150)}`)
+    .join("\n");
+
+  const prompt = `You are curating a "new releases" section of a weekly music newsletter for Big Mike.
+
+${TASTE_PROFILE}
+
+His recent listening: ${recentArtists.slice(0, 20).join(", ")}
+His top artists: ${topArtists.slice(0, 20).join(", ")}
+
+Here are new releases/articles from music publications this week:
+${releaseList}
+
+Pick 5–7 items that genuinely fit Big Mike's taste. Skip anything mainstream, overhyped, or clearly outside his wheelhouse. Prioritize underground, touring artists, and things that connect to his existing taste without being too obvious.
+
+For each pick, write one sentence explaining specifically why it fits his taste — reference his known artists where it helps ("if you're into Just Mustard's noise..."). Keep it direct, no fluff.
+
+Respond with ONLY valid JSON array, no markdown:
+[
+  {
+    "artist": "Artist Name or empty string if not parseable",
+    "title": "Album/EP/Article Title",
+    "blurb": "One sentence on why Big Mike will like this",
+    "source": "Publication name",
+    "url": "full URL"
   }
+]`;
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = message.content[0].type === "text" ? message.content[0].text : "";
+  return parseJson<CuratedRelease[]>(text);
 }
