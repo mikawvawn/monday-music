@@ -37,10 +37,19 @@ export async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function spotifyGet(path: string, token: string): Promise<unknown> {
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function spotifyGet(path: string, token: string, attempt = 0): Promise<unknown> {
   const res = await fetch(`${SPOTIFY_API}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (res.status === 429 || res.status >= 500) {
+    if (attempt >= 3) throw new Error(`Spotify GET ${path} failed after retries: ${await res.text()}`);
+    await sleep((attempt + 1) * 2000);
+    return spotifyGet(path, token, attempt + 1);
+  }
   if (!res.ok) throw new Error(`Spotify GET ${path} failed: ${await res.text()}`);
   return res.json();
 }
