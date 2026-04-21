@@ -114,13 +114,14 @@ function releasesSection(releases: CuratedRelease[]): string {
               <tr>
                 <td style="font-family:Georgia,'Times New Roman',serif;font-size:13px;font-weight:bold;color:${TEXT};letter-spacing:.02em;line-height:1.1;">${esc(r.title)}</td>
                 <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:8px;">
+                  ${r.releaseType ? `<span style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${MUTED};background:${SURFACE};border:1px solid ${BORDER};padding:2px 6px;border-radius:3px;margin-right:4px;">${esc(r.releaseType)}</span>` : ""}
                   <span style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${ACCENT};background:${SURFACE};border:1px solid ${BORDER};padding:2px 6px;border-radius:3px;">${esc(r.source)}</span>
                 </td>
               </tr>
               ${r.artist ? `<tr><td colspan="2" style="font-size:10px;color:${MUTED};padding-top:2px;">${esc(r.artist)}</td></tr>` : ""}
               <tr><td colspan="2" style="font-size:11px;color:${MUTED};line-height:1.6;padding-top:5px;">${esc(r.blurb)}</td></tr>
               <tr><td colspan="2" style="padding-top:7px;">
-                <a href="${esc(r.url)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">READ MORE →</a>${r.spotifyUrl ? ` <a href="${esc(r.spotifyUrl)}" style="display:inline-block;background:#1DB954;color:#fff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">▶ SPOTIFY</a>` : ""}
+                <a href="${esc(r.url)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">READ MORE →</a>${r.spotifyUrl ? ` <a href="${esc(r.spotifyUrl)}" style="display:inline-block;color:#1DB954;border:1px solid #1DB954;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;background:transparent;">▶ SPOTIFY</a>` : ""}
               </td></tr>
             </table>
           </td>

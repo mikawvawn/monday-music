@@ -18,6 +18,7 @@ export interface CuratedRelease {
   url: string;
   imageUrl?: string;
   spotifyUrl?: string;
+  releaseType?: string;
 }
 
 function parseJson<T>(text: string): T {
@@ -109,14 +110,16 @@ ${releaseList}
 
 Pick 5–7 items that genuinely fit Big Mike's taste. Skip anything mainstream, overhyped, or clearly outside his wheelhouse. Prioritize underground, touring artists, and things that connect to his existing taste without being too obvious.
 
-For each pick, write one sentence explaining specifically why it fits his taste — reference his known artists where it helps ("if you're into Just Mustard's noise..."). Keep it direct, no fluff.
+For each pick, write exactly two sentences for the blurb:
+1. One sentence describing the release — include where the band is from and what genre/sound they play.
+2. "For fans of [Artist Name], [Artist Name]." — name two real, specific artists that fit the sound. Do not use artists already in Big Mike's known list unless they are genuinely the closest reference.
 
 Respond with ONLY valid JSON array, no markdown:
 [
   {
     "artist": "Artist Name or empty string if not parseable",
     "title": "Album/EP/Article Title",
-    "blurb": "One sentence on why Big Mike will like this",
+    "blurb": "One sentence on sound/origin. For fans of X, Y.",
     "source": "Publication name",
     "url": "full URL"
   }

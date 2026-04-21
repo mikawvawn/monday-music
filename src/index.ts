@@ -107,9 +107,10 @@ async function run() {
   console.log("Fetching album info...");
   for (const release of curatedReleases) {
     if (release.artist || release.title) {
-      const info = await searchAlbumInfo(release.artist || release.title, release.title, token).catch(() => ({ imageUrl: null, spotifyUrl: null }));
+      const info = await searchAlbumInfo(release.artist || release.title, release.title, token).catch(() => ({ imageUrl: null, spotifyUrl: null, releaseType: null }));
       if (info.imageUrl) release.imageUrl = info.imageUrl;
       if (info.spotifyUrl) release.spotifyUrl = info.spotifyUrl;
+      if (info.releaseType) release.releaseType = info.releaseType;
       if (info.imageUrl || info.spotifyUrl) {
         console.log(`  ✓ Info found for: ${release.artist} — ${release.title}`);
       }

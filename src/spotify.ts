@@ -174,6 +174,7 @@ export async function getTopArtistsWithGenres(token: string): Promise<Record<str
 export interface AlbumInfo {
   imageUrl: string | null;
   spotifyUrl: string | null;
+  releaseType: string | null; // "ALBUM" | "SINGLE" | "EP"
 }
 
 export async function searchAlbumInfo(
@@ -183,13 +184,24 @@ export async function searchAlbumInfo(
 ): Promise<AlbumInfo> {
   const q = encodeURIComponent(`${artist} ${title}`);
   const data = (await spotifyGet(`/search?q=${q}&type=album&limit=1`, token)) as {
-    albums: { items: { images: { url: string; width: number }[]; external_urls: { spotify: string } }[] };
+    albums: { items: { images: { url: string; width: number }[]; external_urls: { spotify: string }; album_type: string; total_tracks: number }[] };
   };
   const album = data.albums?.items?.[0];
   const spotifyUrl = album?.external_urls?.spotify ?? null;
-  if (!album?.images?.length) return { imageUrl: null, spotifyUrl };
+
+  let releaseType: string | null = null;
+  if (album?.album_type) {
+    const t = album.album_type.toLowerCase();
+    const tracks = album.total_tracks ?? 1;
+    if (t === "single" && tracks >= 2) releaseType = "EP";
+    else if (t === "single") releaseType = "SINGLE";
+    else if (t === "album") releaseType = "ALBUM";
+    else if (t === "compilation") releaseType = "COMPILATION";
+  }
+
+  if (!album?.images?.length) return { imageUrl: null, spotifyUrl, releaseType };
   const sorted = [...album.images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
-  return { imageUrl: sorted[0].url, spotifyUrl };
+  return { imageUrl: sorted[0].url, spotifyUrl, releaseType };
 }
 
 export async function searchAlbumArt(
