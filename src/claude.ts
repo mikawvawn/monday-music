@@ -108,11 +108,11 @@ His top artists: ${topArtists.slice(0, 20).join(", ")}
 Here are new releases/articles from music publications this week:
 ${releaseList}
 
-Pick 5–7 items that genuinely fit Big Mike's taste. Skip anything mainstream, overhyped, or clearly outside his wheelhouse. Prioritize underground, touring artists, and things that connect to his existing taste without being too obvious.
+Pick 5–7 items that directly connect to artists Big Mike has actually been listening to recently or has in his top artists. If you can't draw a clear line from the release to his recent or top listening, skip it. Skip anything mainstream, overhyped, or clearly outside his wheelhouse.
 
 For each pick, write exactly two sentences for the blurb:
 1. One sentence describing the release — include where the band is from and what genre/sound they play.
-2. "For fans of [Artist Name], [Artist Name]." — name two real, specific artists that fit the sound. Do not use artists already in Big Mike's known list unless they are genuinely the closest reference.
+2. "For fans of [Artist Name], [Artist Name]." — both artists MUST come from his recent listening or top artists lists above. Pick the two that most closely match the sound of this release.
 
 Respond with ONLY valid JSON array, no markdown:
 [
