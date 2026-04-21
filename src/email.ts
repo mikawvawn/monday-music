@@ -121,7 +121,7 @@ function releasesSection(releases: CuratedRelease[]): string {
               ${r.artist ? `<tr><td colspan="2" style="font-size:10px;color:${MUTED};padding-top:2px;">${esc(r.artist)}</td></tr>` : ""}
               <tr><td colspan="2" style="font-size:11px;color:${MUTED};line-height:1.6;padding-top:5px;">${esc(r.blurb)}</td></tr>
               <tr><td colspan="2" style="padding-top:7px;">
-                <a href="${esc(r.url)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">READ MORE →</a>${r.spotifyUrl ? ` <a href="${esc(r.spotifyUrl)}" style="display:inline-block;background:#1DB954;color:#ffffff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">▶ SPOTIFY</a>` : ""}
+                <a href="${esc(r.url)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">READ MORE →</a>${r.spotifyUrl ? ` <a href="${esc(r.spotifyUrl)}" style="display:inline-block;background:#1DB954;color:#ffffff;text-decoration:none;padding:3px 10px;border-radius:3px;font-family:'Courier New',Courier,monospace;font-size:8px;font-weight:bold;letter-spacing:.1em;">&#9654;&#xFE0E; SPOTIFY</a>` : ""}
               </td></tr>
             </table>
           </td>
