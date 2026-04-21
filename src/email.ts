@@ -199,7 +199,7 @@ function playlistSection(
   </td></tr>`;
 }
 
-export async function sendEmail(
+export function buildEmailHtml(
   playlistName: string,
   description: string,
   longDescription: string,
@@ -209,9 +209,7 @@ export async function sendEmail(
   topTracks: Track[],
   recentTracks: Track[],
   genreBreakdown: { label: string; pct: number }[],
-): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("Missing RESEND_API_KEY");
+): string {
 
   const estMinutes = Math.round(recentTracks.length * 3.2);
   const topArtists = [...new Set(topTracks.map((t) => t.artist))].slice(0, 3);
@@ -346,6 +344,25 @@ export async function sendEmail(
 </table>
 </body>
 </html>`;
+
+  return html;
+}
+
+export async function sendEmail(
+  playlistName: string,
+  description: string,
+  longDescription: string,
+  playlistUrl: string,
+  tracks: Track[],
+  newReleases: CuratedRelease[],
+  topTracks: Track[],
+  recentTracks: Track[],
+  genreBreakdown: { label: string; pct: number }[],
+): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("Missing RESEND_API_KEY");
+
+  const html = buildEmailHtml(playlistName, description, longDescription, playlistUrl, tracks, newReleases, topTracks, recentTracks, genreBreakdown);
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

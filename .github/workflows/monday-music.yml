@@ -3,7 +3,12 @@ name: Monday Music
 on:
   schedule:
     - cron: "30 13 * * 1"  # 8:30am ET (UTC-5) every Monday
-  workflow_dispatch:        # manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: "Generate preview HTML only (no playlist, no email)"
+        type: boolean
+        default: false
 
 jobs:
   generate-playlist:
@@ -20,10 +25,29 @@ jobs:
 
       - run: npm run build
 
-      - run: node dist/index.js
+      - name: Run (full)
+        if: ${{ inputs.preview != true }}
+        run: node dist/index.js
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Run (preview)
+        if: ${{ inputs.preview == true }}
+        run: node dist/preview.js
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload preview
+        if: ${{ inputs.preview == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-preview
+          path: /tmp/monday-music-preview.html
+          retention-days: 3
