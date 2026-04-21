@@ -17,6 +17,7 @@ export interface CuratedRelease {
   source: string;
   url: string;
   imageUrl?: string;
+  spotifyUrl?: string;
 }
 
 function parseJson<T>(text: string): T {

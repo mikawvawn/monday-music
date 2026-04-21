@@ -171,18 +171,32 @@ export async function getTopArtistsWithGenres(token: string): Promise<Record<str
 }
 
 /** Search Spotify for an album and return the cover art URL (300px preferred). */
+export interface AlbumInfo {
+  imageUrl: string | null;
+  spotifyUrl: string | null;
+}
+
+export async function searchAlbumInfo(
+  artist: string,
+  title: string,
+  token: string
+): Promise<AlbumInfo> {
+  const q = encodeURIComponent(`${artist} ${title}`);
+  const data = (await spotifyGet(`/search?q=${q}&type=album&limit=1`, token)) as {
+    albums: { items: { images: { url: string; width: number }[]; external_urls: { spotify: string } }[] };
+  };
+  const album = data.albums?.items?.[0];
+  const spotifyUrl = album?.external_urls?.spotify ?? null;
+  if (!album?.images?.length) return { imageUrl: null, spotifyUrl };
+  const sorted = [...album.images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
+  return { imageUrl: sorted[0].url, spotifyUrl };
+}
+
 export async function searchAlbumArt(
   artist: string,
   title: string,
   token: string
 ): Promise<string | null> {
-  const q = encodeURIComponent(`${artist} ${title}`);
-  const data = (await spotifyGet(`/search?q=${q}&type=album&limit=1`, token)) as {
-    albums: { items: { images: { url: string; width: number }[] }[] };
-  };
-  const album = data.albums?.items?.[0];
-  if (!album?.images?.length) return null;
-  // Prefer ~300px image; fall back to smallest available
-  const sorted = [...album.images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
-  return sorted[0].url;
+  const { imageUrl } = await searchAlbumInfo(artist, title, token);
+  return imageUrl;
 }

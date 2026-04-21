@@ -8,7 +8,7 @@ import {
   createPlaylist,
   addTracksToPlaylist,
   getTopArtistsWithGenres,
-  searchAlbumArt,
+  searchAlbumInfo,
   type Track,
 } from "./spotify.js";
 import { generatePlaylist, curateNewReleases } from "./claude.js";
@@ -103,14 +103,15 @@ async function run() {
     throw new Error(`Too few tracks found (${foundTracks.length}), aborting`);
   }
 
-  // Enrich releases with album art (sequential to respect rate limits)
-  console.log("Fetching album art...");
+  // Enrich releases with album art + Spotify links (sequential to respect rate limits)
+  console.log("Fetching album info...");
   for (const release of curatedReleases) {
     if (release.artist || release.title) {
-      const imageUrl = await searchAlbumArt(release.artist || release.title, release.title, token).catch(() => null);
-      if (imageUrl) {
-        release.imageUrl = imageUrl;
-        console.log(`  ✓ Art found for: ${release.artist} — ${release.title}`);
+      const info = await searchAlbumInfo(release.artist || release.title, release.title, token).catch(() => ({ imageUrl: null, spotifyUrl: null }));
+      if (info.imageUrl) release.imageUrl = info.imageUrl;
+      if (info.spotifyUrl) release.spotifyUrl = info.spotifyUrl;
+      if (info.imageUrl || info.spotifyUrl) {
+        console.log(`  ✓ Info found for: ${release.artist} — ${release.title}`);
       }
     }
   }
