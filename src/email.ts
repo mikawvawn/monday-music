@@ -97,9 +97,9 @@ const CAT_SEQUENCE: Array<[string, string]> = [
 
 // P1 + P3: New Releases is now section 02; shows album art
 function releasesSection(releases: CuratedRelease[]): string {
-  const cards = releases.slice(0, 5).map((r, i) => {
+  const cards = releases.map((r, i) => {
     const num = String(i + 1).padStart(2, "0");
-    const isLast = i === Math.min(releases.length, 5) - 1;
+    const isLast = i === releases.length - 1;
     const artEl = r.imageUrl
       ? `<img src="${esc(r.imageUrl)}" width="64" height="64" style="display:block;border-radius:3px;" alt="${esc(r.title)}">`
       : `<table cellpadding="0" cellspacing="0" border="0" width="64"><tr><td style="width:64px;height:64px;background:${SURFACE};border:1px solid ${BORDER};border-radius:3px;text-align:center;vertical-align:middle;font-family:'Courier New',Courier,monospace;font-size:20px;color:${DIM};">${esc((r.source || "?")[0].toUpperCase())}</td></tr></table>`;
@@ -132,15 +132,15 @@ function releasesSection(releases: CuratedRelease[]): string {
 
   return `<tr><td style="padding:0 28px 4px;">
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      ${secHeader("02", "NEW RELEASES", `${Math.min(releases.length, 5)} ALBUMS THIS WEEK`)}
+      ${secHeader("02", "NEW RELEASES", `${releases.length} ALBUMS THIS WEEK`)}
       <tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0">${cards}</table></td></tr>
     </table>
   </td></tr>`;
 }
 
 // P1: Music News is now section 03
-function newsSection(releases: CuratedRelease[]): string {
-  const items = releases.slice(0, 6).map((r, i) => {
+function newsSection(news: CuratedRelease[]): string {
+  const items = news.map((r, i) => {
     const [label, color] = CAT_SEQUENCE[i % CAT_SEQUENCE.length];
     const headline = r.artist ? `${esc(r.artist)} — ${esc(r.title)}` : esc(r.title);
     return `<tr>
@@ -207,6 +207,7 @@ export function buildEmailHtml(
   playlistUrl: string,
   tracks: Track[],
   newReleases: CuratedRelease[],
+  news: CuratedRelease[],
   topTracks: Track[],
   recentTracks: Track[],
   genreBreakdown: { label: string; pct: number }[],
@@ -259,6 +260,7 @@ export function buildEmailHtml(
       : `<span style="font-size:11px;color:${DIM};font-style:italic;">No new artists this week</span>`;
 
   const hasReleases = newReleases.length > 0;
+  const hasNews = news.length > 0;
   const hasGenres = genreBreakdown.length > 0;
 
   // P4: wrapped section layout — donut chart on left if genre data available
@@ -324,11 +326,11 @@ export function buildEmailHtml(
   ${hasReleases ? divider() : ""}
 
   <!-- 03: MUSIC NEWS (P1: moved after releases) -->
-  ${hasReleases ? newsSection(newReleases) : ""}
-  ${hasReleases ? divider() : ""}
+  ${hasNews ? newsSection(news) : ""}
+  ${hasNews ? divider() : ""}
 
   <!-- 04: YOUR PLAYLIST (P2: blurb + preview) -->
-  ${playlistSection(tracks, playlistUrl, hasReleases ? "04" : "02", longDescription || description)}
+  ${playlistSection(tracks, playlistUrl, hasReleases || hasNews ? "04" : "02", longDescription || description)}
 
   <!-- FOOTER -->
   <tr>
@@ -356,6 +358,7 @@ export async function sendEmail(
   playlistUrl: string,
   tracks: Track[],
   newReleases: CuratedRelease[],
+  news: CuratedRelease[],
   topTracks: Track[],
   recentTracks: Track[],
   genreBreakdown: { label: string; pct: number }[],
@@ -363,7 +366,7 @@ export async function sendEmail(
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("Missing RESEND_API_KEY");
 
-  const html = buildEmailHtml(playlistName, description, longDescription, playlistUrl, tracks, newReleases, topTracks, recentTracks, genreBreakdown);
+  const html = buildEmailHtml(playlistName, description, longDescription, playlistUrl, tracks, newReleases, news, topTracks, recentTracks, genreBreakdown);
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
