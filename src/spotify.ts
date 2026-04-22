@@ -175,7 +175,63 @@ export interface AlbumInfo {
   imageUrl: string | null;
   spotifyUrl: string | null;
   releaseType: string | null; // "ALBUM" | "SINGLE" | "EP"
+  releaseDate: string | null; // "YYYY-MM-DD" or "YYYY"
+  matchedArtist: string | null; // actual artist on the matched Spotify album
 }
+
+/** Normalize artist names for comparison: strip "the", punctuation, featuring suffixes, diacritics. */
+export function normalizeArtist(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip diacritics
+    .replace(/\s*(feat\.?|featuring|ft\.?|with|&|and|x|vs\.?)\s.*$/i, "") // drop collab suffix
+    .replace(/^the\s+/, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/** True if two artist names refer to the same act (normalized equality or one contains the other). */
+export function artistsMatch(a: string, b: string): boolean {
+  const na = normalizeArtist(a);
+  const nb = normalizeArtist(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Tolerate cases like "Tricky" matching "Tricky & Guest" after collab stripping fails
+  if (na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
+}
+
+interface SpotifyAlbumSearchItem {
+  images: { url: string; width: number }[];
+  external_urls: { spotify: string };
+  album_type: string;
+  total_tracks: number;
+  release_date: string;
+  artists: { name: string }[];
+}
+
+function classifyReleaseType(album: SpotifyAlbumSearchItem): string | null {
+  const t = album.album_type?.toLowerCase();
+  const tracks = album.total_tracks ?? 1;
+  if (t === "single" && tracks >= 2) return "EP";
+  if (t === "single") return "SINGLE";
+  if (t === "album") return "ALBUM";
+  if (t === "compilation") return "COMPILATION";
+  return null;
+}
+
+function pickBestImage(images: { url: string; width: number }[]): string | null {
+  if (!images?.length) return null;
+  const sorted = [...images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
+  return sorted[0].url;
+}
+
+const EMPTY_INFO: AlbumInfo = {
+  imageUrl: null,
+  spotifyUrl: null,
+  releaseType: null,
+  releaseDate: null,
+  matchedArtist: null,
+};
 
 export async function searchAlbumInfo(
   artist: string,
@@ -183,25 +239,37 @@ export async function searchAlbumInfo(
   token: string
 ): Promise<AlbumInfo> {
   const q = encodeURIComponent(`${artist} ${title}`);
-  const data = (await spotifyGet(`/search?q=${q}&type=album&limit=1`, token)) as {
-    albums: { items: { images: { url: string; width: number }[]; external_urls: { spotify: string }; album_type: string; total_tracks: number }[] };
+  const data = (await spotifyGet(`/search?q=${q}&type=album&limit=5`, token)) as {
+    albums: { items: SpotifyAlbumSearchItem[] };
   };
-  const album = data.albums?.items?.[0];
-  const spotifyUrl = album?.external_urls?.spotify ?? null;
+  const items = data.albums?.items ?? [];
+  if (items.length === 0) return EMPTY_INFO;
 
-  let releaseType: string | null = null;
-  if (album?.album_type) {
-    const t = album.album_type.toLowerCase();
-    const tracks = album.total_tracks ?? 1;
-    if (t === "single" && tracks >= 2) releaseType = "EP";
-    else if (t === "single") releaseType = "SINGLE";
-    else if (t === "album") releaseType = "ALBUM";
-    else if (t === "compilation") releaseType = "COMPILATION";
-  }
+  // Find first result whose primary artist matches the expected artist.
+  const match = items.find((a) => a.artists?.some((ar) => artistsMatch(ar.name, artist))) ?? null;
+  if (!match) return EMPTY_INFO;
 
-  if (!album?.images?.length) return { imageUrl: null, spotifyUrl, releaseType };
-  const sorted = [...album.images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300));
-  return { imageUrl: sorted[0].url, spotifyUrl, releaseType };
+  return {
+    imageUrl: pickBestImage(match.images),
+    spotifyUrl: match.external_urls?.spotify ?? null,
+    releaseType: classifyReleaseType(match),
+    releaseDate: match.release_date ?? null,
+    matchedArtist: match.artists?.[0]?.name ?? null,
+  };
+}
+
+/** True if a YYYY-MM-DD / YYYY-MM / YYYY date string is within `days` of now. */
+export function isRecentRelease(releaseDate: string | null, days: number, now = new Date()): boolean {
+  if (!releaseDate) return false;
+  // Spotify can return "YYYY", "YYYY-MM", or "YYYY-MM-DD"
+  const parts = releaseDate.split("-");
+  const y = parseInt(parts[0], 10);
+  const m = parts[1] ? parseInt(parts[1], 10) - 1 : 0;
+  const d = parts[2] ? parseInt(parts[2], 10) : 1;
+  if (!Number.isFinite(y)) return false;
+  const released = new Date(Date.UTC(y, m, d));
+  const ageDays = (now.getTime() - released.getTime()) / (1000 * 60 * 60 * 24);
+  return ageDays <= days && ageDays >= -7; // allow ~1 week in the future for scheduled drops
 }
 
 export async function searchAlbumArt(

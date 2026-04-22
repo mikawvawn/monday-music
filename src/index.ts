@@ -8,12 +8,15 @@ import {
   createPlaylist,
   addTracksToPlaylist,
   getTopArtistsWithGenres,
-  searchAlbumInfo,
   type Track,
 } from "./spotify.js";
-import { generatePlaylist, curateNewReleases } from "./claude.js";
+import { generatePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
 import { sendEmail } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
+import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
+
+const NR_TARGET = 5;
+const NEWS_TARGET = 5;
 
 // Map Spotify genre tags into 5 display buckets
 const GENRE_BUCKETS: Record<string, string[]> = {
@@ -69,7 +72,7 @@ async function run() {
 
   // Claude + genre data in parallel
   console.log("Asking Claude for playlist + new release curation...");
-  const [plan, curatedReleases, artistGenres] = await Promise.all([
+  const [plan, curated, artistGenres] = await Promise.all([
     generatePlaylist(recentTracks, topTracks, recentPlaylistNames),
     curateNewReleases(rawReleases, recentArtists, topArtists),
     getTopArtistsWithGenres(token).catch((err) => {
@@ -78,7 +81,7 @@ async function run() {
     }),
   ]);
   console.log(`Playlist: "${plan.name}" (${plan.theme}) | ${plan.tracks.length} tracks suggested`);
-  console.log(`New releases curated: ${curatedReleases.length}`);
+  console.log(`Release candidates: ${curated.releases.length} | News candidates: ${curated.news.length}`);
 
   // Compute genre breakdown from top tracks
   const sampleGenres = Object.entries(artistGenres).slice(0, 3).map(([, gs]) => `[${gs.join(",")}]`).join(" | ");
@@ -103,19 +106,33 @@ async function run() {
     throw new Error(`Too few tracks found (${foundTracks.length}), aborting`);
   }
 
-  // Enrich releases with album art + Spotify links (sequential to respect rate limits)
-  console.log("Fetching album info...");
-  for (const release of curatedReleases) {
-    if (release.artist || release.title) {
-      const info = await searchAlbumInfo(release.artist || release.title, release.title, token).catch(() => ({ imageUrl: null, spotifyUrl: null, releaseType: null }));
-      if (info.imageUrl) release.imageUrl = info.imageUrl;
-      if (info.spotifyUrl) release.spotifyUrl = info.spotifyUrl;
-      if (info.releaseType) release.releaseType = info.releaseType;
-      if (info.imageUrl || info.spotifyUrl) {
-        console.log(`  ✓ Info found for: ${release.artist} — ${release.title}`);
-      }
-    }
+  // Validate release candidates against Spotify (artist match + recency). Walk in ranked
+  // order, keep first NR_TARGET that pass. If short, retry with additional candidates.
+  console.log("Validating release candidates...");
+  let { kept: validatedReleases, rejectedUrls } = await enrichAndFilterReleases(
+    curated.releases,
+    token,
+    NR_TARGET,
+  );
+  if (validatedReleases.length < NR_TARGET) {
+    console.log(`Only ${validatedReleases.length}/${NR_TARGET} releases kept — asking Claude for more candidates...`);
+    const alreadySeenUrls = [...rejectedUrls, ...validatedReleases.map((r) => r.url)];
+    const more = await curateMoreReleases(rawReleases, recentArtists, topArtists, alreadySeenUrls, 10).catch((e) => {
+      console.warn(`Retry curation failed: ${e.message}`);
+      return [] as typeof curated.releases;
+    });
+    const needed = NR_TARGET - validatedReleases.length;
+    const extra = await enrichAndFilterReleases(more, token, needed);
+    validatedReleases = dedupeReleasesByArtist(validatedReleases, extra.kept).slice(0, NR_TARGET);
   }
+  if (validatedReleases.length < NR_TARGET) {
+    console.warn(`⚠ Only ${validatedReleases.length} releases after retry (target ${NR_TARGET}). Shipping with what we have.`);
+  }
+  console.log(`Releases final: ${validatedReleases.length}`);
+
+  // Filter News: drop any item whose artist already appears in New Releases. Cap at NEWS_TARGET.
+  const news = filterNewsByReleaseArtists(curated.news, validatedReleases, NEWS_TARGET);
+  console.log(`News final: ${news.length}`);
 
   // Create playlist
   const playlist = await createPlaylist(userId, plan.name, plan.description, token);
@@ -129,7 +146,8 @@ async function run() {
     plan.longDescription,
     playlist.url,
     foundTracks,
-    curatedReleases,
+    validatedReleases,
+    news,
     topTracks,
     recentTracks,
     genreBreakdown,
