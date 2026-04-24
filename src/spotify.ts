@@ -6,8 +6,15 @@ export interface Track {
   name: string;
   artist: string;
   artistId: string;
+  artistIds: string[];
   album: string;
   url: string;
+}
+
+export interface ArtistSummary {
+  id: string;
+  name: string;
+  genres: string[];
 }
 
 export interface SpotifyClient {
@@ -64,13 +71,17 @@ export async function getRecentlyPlayed(token: string): Promise<Track[]> {
     name: i.track.name,
     artist: i.track.artists[0]?.name ?? "",
     artistId: i.track.artists[0]?.id ?? "",
+    artistIds: i.track.artists.map((artist) => artist.id).filter(Boolean),
     album: i.track.album.name,
     url: i.track.external_urls.spotify,
   }));
 }
 
-export async function getTopTracks(token: string): Promise<Track[]> {
-  const data = (await spotifyGet("/me/top/tracks?limit=50&time_range=medium_term", token)) as {
+export async function getTopTracks(
+  token: string,
+  timeRange: "short_term" | "medium_term" | "long_term" = "medium_term",
+): Promise<Track[]> {
+  const data = (await spotifyGet(`/me/top/tracks?limit=50&time_range=${timeRange}`, token)) as {
     items: { id: string; name: string; artists: { id: string; name: string }[]; album: { name: string }; external_urls: { spotify: string } }[];
   };
   return data.items.map((t) => ({
@@ -78,8 +89,36 @@ export async function getTopTracks(token: string): Promise<Track[]> {
     name: t.name,
     artist: t.artists[0]?.name ?? "",
     artistId: t.artists[0]?.id ?? "",
+    artistIds: t.artists.map((artist) => artist.id).filter(Boolean),
     album: t.album.name,
     url: t.external_urls.spotify,
+  }));
+}
+
+export async function getTopArtists(
+  token: string,
+  timeRange: "short_term" | "medium_term" | "long_term" = "medium_term",
+): Promise<ArtistSummary[]> {
+  const data = (await spotifyGet(`/me/top/artists?limit=50&time_range=${timeRange}`, token)) as {
+    items: { id: string; name: string; genres: string[] }[];
+  };
+  return data.items.map((artist) => ({
+    id: artist.id,
+    name: artist.name,
+    genres: artist.genres ?? [],
+  }));
+}
+
+export async function getArtistsByIds(token: string, artistIds: string[]): Promise<ArtistSummary[]> {
+  const ids = [...new Set(artistIds.filter(Boolean))].slice(0, 50);
+  if (ids.length === 0) return [];
+  const data = (await spotifyGet(`/artists?ids=${encodeURIComponent(ids.join(","))}`, token)) as {
+    artists: { id: string; name: string; genres: string[] }[];
+  };
+  return (data.artists ?? []).map((artist) => ({
+    id: artist.id,
+    name: artist.name,
+    genres: artist.genres ?? [],
   }));
 }
 
@@ -105,6 +144,7 @@ export async function searchTrack(
     name: item.name,
     artist: item.artists[0]?.name ?? "",
     artistId: item.artists[0]?.id ?? "",
+    artistIds: item.artists.map((artist) => artist.id).filter(Boolean),
     album: item.album.name,
     url: item.external_urls.spotify,
   };
@@ -160,11 +200,9 @@ export async function addTracksToPlaylist(
 
 /** Fetch user's top artists (medium term) with genre data. Uses user-top-read scope. */
 export async function getTopArtistsWithGenres(token: string): Promise<Record<string, string[]>> {
-  const data = (await spotifyGet("/me/top/artists?limit=50&time_range=medium_term", token)) as {
-    items: { id: string; name: string; genres: string[] }[];
-  };
+  const data = await getTopArtists(token, "medium_term");
   const result: Record<string, string[]> = {};
-  for (const artist of data.items) {
+  for (const artist of data) {
     result[artist.id] = artist.genres ?? [];
   }
   return result;

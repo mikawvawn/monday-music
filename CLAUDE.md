@@ -31,6 +31,20 @@ All five must be set to run the full pipeline:
 
 Preview mode only requires the Spotify vars + `ANTHROPIC_API_KEY` (no Resend needed).
 
+## Spotify API Rules
+
+You are helping build an application using the Spotify Web API. Follow these rules:
+
+- OpenAPI spec: Refer to the Spotify OpenAPI specification at https://developer.spotify.com/reference/web-api/open-api-schema.yaml for all endpoint paths, parameters, and response schemas. Do not guess endpoints or field names.
+- Authorization: Use the Authorization Code with PKCE flow (https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) for any user-specific data. If the app has a secure backend, the Authorization Code flow (https://developer.spotify.com/documentation/web-api/tutorials/code-flow) is also acceptable. Only use Client Credentials for public, non-user data. Never use the Implicit Grant flow; it is deprecated.
+- Redirect URIs: Always use HTTPS redirect URIs, except `http://127.0.0.1` for local development. Never use `http://localhost` or wildcard URIs. See https://developer.spotify.com/documentation/web-api/concepts/redirect_uri for requirements.
+- Scopes: Request only the minimum scopes (https://developer.spotify.com/documentation/web-api/concepts/scopes) needed for the features being built. Do not request broad scopes preemptively.
+- Token management: Store tokens securely. Never expose the Client Secret in client-side code. Implement token refresh (https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens) so the app does not break when access tokens expire.
+- Rate limits: Implement exponential backoff and respect the `Retry-After` header when receiving HTTP 429 responses. Do not retry immediately or in tight loops.
+- Deprecated endpoints: Do not use deprecated endpoints. Prefer `/playlists/{id}/items` over `/playlists/{id}/tracks`, and use `/me/library` over the type-specific library endpoints.
+- Error handling: Handle all HTTP error codes documented in the OpenAPI schema. Read the returned error message and use it to provide meaningful feedback to the user.
+- Developer Terms of Service: Comply with the Spotify Developer Terms (https://developer.spotify.com/terms). In particular: do not cache Spotify content beyond what is needed for immediate use, always attribute content to Spotify, and do not use the API to train machine learning models on Spotify data.
+
 ## Architecture
 
 The pipeline runs in `src/index.ts` and has five stages:
@@ -76,10 +90,6 @@ interface CuratedBuckets { releases: CuratedRelease[]; news: CuratedRelease[] }
 - `isRecentRelease(dateStr, days, now?)` — true if date is within `days` of now (allows 7-day future window for scheduled drops)
 - `searchAlbumInfo(artist, title, token)` — searches Spotify, returns first result where artist matches; returns `EMPTY_INFO` on no match
 
-## Genre Breakdown
-
-`computeGenreBreakdown()` (in `index.ts` and `preview.ts`) maps Spotify genre tags into five display buckets: Electronic, Indie, R&B, Brazilian, Other. Uses artist genres from `getTopArtistsWithGenres()`, not track-level data. Non-fatal if it fails.
-
 ## Deployment
 
 The workflow runs automatically every Monday at 8:30am ET (`mikawvawn/monday-music` on GitHub). To trigger manually, use the GitHub API or Actions UI. All secrets are stored in GitHub repository secrets.
@@ -104,6 +114,14 @@ git push origin main
 5. **Auto-generate playlist cover image** — use playlist name + theme + longDescription as image generation prompt; upload to Spotify as cover; use in email header. Needs image generation API integration + `uploadPlaylistCover()` Spotify endpoint.
 6. **Overall email design** — tied to playlist image; the generated cover should anchor the visual identity of the email.
 7. **Taste profiling / multi-user** — `TASTE_PROFILE` in `src/claude.ts` is currently hardcoded for Mike. Needs to become a per-user configurable input derived from listening data + onboarding. Tied to the multi-user backend work.
+
+## Copy Audit Notes
+
+- The next low-priority pass should focus on newsletter title, `Recent Favorites`, the `Top Artists` / `Top Tracks` treatment, and the greeting in the top-right header.
+- New Releases should lose the source pill and likely gain a one-word genre pill instead.
+- `Music News` is in acceptable shape for now.
+- The playlist section should get a shorter description and an image treatment.
+- Treat this as a design and copy polish round after the current feature work is merged.
 
 ## Explicitly Deferred
 

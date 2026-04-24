@@ -1,4 +1,4 @@
-import type { Track } from "./spotify.js";
+import type { ArtistSummary, Track } from "./spotify.js";
 import type { CuratedRelease } from "./claude.js";
 
 // Editorial palette — hardcoded (no CSS vars; email clients don't support them)
@@ -13,8 +13,6 @@ const ACCENT_BG = "rgba(201,79,44,0.10)";
 const HDR_BG    = "#1a1208";
 const HDR_TEXT  = "#f5ede0";
 const HDR_ACC   = "#e8734a";
-const CHART     = ["#c94f2c", "#e8734a", "#d4a574", "#b8c4a0", "#9ab0c8"];
-
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -37,53 +35,61 @@ function divider(): string {
   return `<tr><td style="padding:4px 28px;"><div style="height:1px;background:${BORDER};"></div></td></tr>`;
 }
 
-/** SVG donut chart from real genre breakdown. r=38, circ≈238.76 */
-function donutChart(breakdown: { label: string; pct: number }[]): string {
-  const CIRC = 238.76;
-  const top = breakdown[0] ?? { label: "—", pct: 0 };
+function wrappedSection(
+  topArtistsShortTerm: ArtistSummary[],
+  topTracksShortTerm: Track[],
+): string {
+  const topArtists = topArtistsShortTerm.slice(0, 10);
+  const topTracks = topTracksShortTerm.slice(0, 5);
 
-  let offset = 0;
-  const slices = breakdown.map((g, i) => {
-    const dash = (g.pct / 100) * CIRC;
-    const gap = CIRC - dash;
-    const el = `<circle cx="55" cy="55" r="38" fill="none" stroke="${CHART[i % CHART.length]}" stroke-width="18" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 55 55)"/>`;
-    offset += dash;
-    return el;
-  }).join("\n      ");
+  const topArtistRows = topArtists.length > 0
+    ? topArtists
+        .map(
+          (artist, i) => `<tr>
+      <td style="padding:4px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="font-family:'Courier New',Courier,monospace;font-size:11px;color:${ACCENT};width:18px;vertical-align:top;">${i + 1}</td>
+          <td>
+            <div style="font-size:12px;color:${TEXT};font-weight:600;line-height:1.35;">${esc(artist.name)}</div>
+            ${artist.genres.length > 0 ? `<div style="font-size:10px;color:${MUTED};line-height:1.4;">${esc(artist.genres.slice(0, 2).join(" / "))}</div>` : ""}
+          </td>
+        </tr></table>
+      </td>
+    </tr>`,
+        )
+        .join("\n")
+    : `<tr><td style="font-size:11px;color:${DIM};font-style:italic;padding:4px 0;">Top artists unavailable</td></tr>`;
 
-  const legend = breakdown.map((g, i) =>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-      <div style="width:8px;height:8px;border-radius:2px;background:${CHART[i % CHART.length]};flex-shrink:0;"></div>
-      <span style="font-family:'Courier New',Courier,monospace;font-size:9px;color:${MUTED};">${esc(g.label)}</span>
-      <span style="font-family:'Courier New',Courier,monospace;font-size:9px;color:${DIM};margin-left:auto;padding-left:10px;">${g.pct}%</span>
-    </div>`
-  ).join("\n");
+  const topTrackRows = topTracks.length > 0
+    ? topTracks
+        .map(
+          (track, i) => `<tr>
+      <td style="padding:4px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="font-family:'Courier New',Courier,monospace;font-size:11px;color:${ACCENT};width:18px;vertical-align:top;">${i + 1}</td>
+          <td>
+            <div style="font-size:12px;color:${TEXT};font-weight:600;line-height:1.35;">${esc(track.name)}</div>
+            <div style="font-size:10px;color:${MUTED};line-height:1.4;">${esc(`${track.artist} • ${track.album}`)}</div>
+          </td>
+        </tr></table>
+      </td>
+    </tr>`,
+        )
+        .join("\n")
+    : `<tr><td style="font-size:11px;color:${DIM};font-style:italic;padding:4px 0;">Top tracks unavailable</td></tr>`;
 
-  return `<td style="width:140px;vertical-align:top;padding-right:16px;">
-    <svg width="110" height="110" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="55" cy="55" r="38" fill="none" stroke="${BORDER}" stroke-width="18"/>
-      ${slices}
-      <text x="55" y="50" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="bold" fill="${TEXT}">${top.pct}%</text>
-      <text x="55" y="63" text-anchor="middle" font-family="Courier New,monospace" font-size="7" fill="${MUTED}">${esc(top.label.toUpperCase())}</text>
-    </svg>
-    <div style="margin-top:6px;">${legend}</div>
-  </td>`;
-}
-
-/** Fallback wrapped stats when no genre breakdown available */
-function wrappedStatsOnly(topArtistRows: string, discTags: string, estMinutes: number, newDiscoveriesCount: number): string {
-  return `<td style="vertical-align:top;padding-right:14px;width:48%;">
-    <div style="background:${ACCENT_BG};border:1px solid rgba(201,79,44,0.2);border-radius:4px;padding:12px 14px;margin-bottom:12px;">
-      <span style="font-family:Georgia,serif;font-size:30px;color:${ACCENT};font-weight:900;line-height:1;">${estMinutes}</span>
-      <span style="font-family:'Courier New',Courier,monospace;font-size:9px;color:${MUTED};letter-spacing:.08em;margin-left:8px;">MINS LISTENED</span>
-    </div>
-    <div style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:6px;">TOP ARTISTS</div>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">${topArtistRows}</table>
-  </td>
-  <td style="width:52%;vertical-align:top;padding-left:14px;border-left:1px solid ${BORDER};">
-    <div style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:8px;">NEW DISCOVERIES · ${newDiscoveriesCount} ARTISTS</div>
-    <div>${discTags}</div>
-  </td>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="width:280px;vertical-align:top;padding-right:16px;">
+        <div style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:6px;">TOP ARTISTS</div>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">${topArtistRows}</table>
+      </td>
+      <td style="width:280px;vertical-align:top;border-left:1px solid ${BORDER};padding-left:16px;">
+        <div style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:6px;">TOP TRACKS</div>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">${topTrackRows}</table>
+      </td>
+    </tr>
+  </table>`;
 }
 
 const CAT_SEQUENCE: Array<[string, string]> = [
@@ -208,79 +214,15 @@ export function buildEmailHtml(
   tracks: Track[],
   newReleases: CuratedRelease[],
   news: CuratedRelease[],
-  topTracks: Track[],
-  recentTracks: Track[],
-  genreBreakdown: { label: string; pct: number }[],
+  topArtistsShortTerm: ArtistSummary[],
+  topTracksShortTerm: Track[],
 ): string {
-
-  const estMinutes = Math.round(recentTracks.length * 3.2);
-  const topArtists = [...new Set(topTracks.map((t) => t.artist))].slice(0, 3);
-  const recentArtistSet = new Set(recentTracks.map((t) => t.artist));
-  const newDiscoveries = [...new Set(tracks.map((t) => t.artist))]
-    .filter((a) => !recentArtistSet.has(a))
-    .slice(0, 5);
-
   const dateStr = new Date()
     .toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })
     .toUpperCase();
 
-  const weekRange = (() => {
-    const now = new Date();
-    const day = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
-    return `${fmt(mon)} – ${fmt(sun)}`;
-  })();
-
-  const topArtistRows = topArtists
-    .map(
-      (a, i) => `<tr>
-      <td style="padding:3px 0;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="font-family:'Courier New',Courier,monospace;font-size:11px;color:${ACCENT};width:18px;vertical-align:middle;">${i + 1}</td>
-          <td style="font-size:12px;color:${TEXT};font-weight:500;">${esc(a)}</td>
-        </tr></table>
-      </td>
-    </tr>`,
-    )
-    .join("\n");
-
-  const discTags =
-    newDiscoveries.length > 0
-      ? newDiscoveries
-          .map(
-            (a) =>
-              `<span style="display:inline-block;font-family:'Courier New',Courier,monospace;font-size:9px;color:${ACCENT};background:${ACCENT_BG};border:1px solid rgba(201,79,44,0.2);padding:2px 8px;border-radius:3px;margin-right:4px;margin-bottom:4px;">${esc(a)}</span>`,
-          )
-          .join("")
-      : `<span style="font-size:11px;color:${DIM};font-style:italic;">No new artists this week</span>`;
-
   const hasReleases = newReleases.length > 0;
   const hasNews = news.length > 0;
-  const hasGenres = genreBreakdown.length > 0;
-
-  // P4: wrapped section layout — donut chart on left if genre data available
-  const wrappedContent = hasGenres
-    ? `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-        ${donutChart(genreBreakdown)}
-        <td style="vertical-align:top;border-left:1px solid ${BORDER};padding-left:16px;">
-          <div style="background:${ACCENT_BG};border:1px solid rgba(201,79,44,0.2);border-radius:4px;padding:10px 14px;margin-bottom:12px;">
-            <span style="font-family:Georgia,serif;font-size:28px;color:${ACCENT};font-weight:900;line-height:1;">${estMinutes}</span>
-            <span style="font-family:'Courier New',Courier,monospace;font-size:9px;color:${MUTED};letter-spacing:.08em;margin-left:8px;">MINS LISTENED</span>
-          </div>
-          <div style="font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:6px;">TOP ARTISTS</div>
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">${topArtistRows}</table>
-          <div style="margin-top:14px;font-family:'Courier New',Courier,monospace;font-size:8px;color:${DIM};letter-spacing:.1em;margin-bottom:6px;">NEW DISCOVERIES · ${newDiscoveries.length}</div>
-          <div>${discTags}</div>
-        </td>
-      </tr></table>`
-    : `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-        ${wrappedStatsOnly(topArtistRows, discTags, estMinutes, newDiscoveries.length)}
-      </tr></table>`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -313,8 +255,8 @@ export function buildEmailHtml(
   <tr>
     <td style="padding:0 28px 4px;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
-        ${secHeader("01", "THIS WEEK WRAPPED", weekRange)}
-        <tr><td style="padding:14px 0;">${wrappedContent}</td></tr>
+        ${secHeader("01", "RECENT FAVORITES", "LAST 4 WEEKS")}
+        <tr><td style="padding:14px 0;">${wrappedSection(topArtistsShortTerm, topTracksShortTerm)}</td></tr>
       </table>
     </td>
   </tr>
@@ -359,14 +301,13 @@ export async function sendEmail(
   tracks: Track[],
   newReleases: CuratedRelease[],
   news: CuratedRelease[],
-  topTracks: Track[],
-  recentTracks: Track[],
-  genreBreakdown: { label: string; pct: number }[],
+  topArtistsShortTerm: ArtistSummary[],
+  topTracksShortTerm: Track[],
 ): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("Missing RESEND_API_KEY");
 
-  const html = buildEmailHtml(playlistName, description, longDescription, playlistUrl, tracks, newReleases, news, topTracks, recentTracks, genreBreakdown);
+  const html = buildEmailHtml(playlistName, description, longDescription, playlistUrl, tracks, newReleases, news, topArtistsShortTerm, topTracksShortTerm);
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
