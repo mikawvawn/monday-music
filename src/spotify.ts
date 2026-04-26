@@ -320,6 +320,17 @@ export async function searchAlbumArt(
 }
 
 
+/** Fetch track IDs from an existing playlist (first 100 tracks). */
+export async function getPlaylistTracks(playlistId: string, token: string): Promise<string[]> {
+  const data = (await spotifyGet(
+    `/playlists/${encodeURIComponent(playlistId)}/tracks?fields=items(track(id))&limit=100`,
+    token,
+  )) as { items: { track: { id: string } | null }[] };
+  return (data.items ?? [])
+    .map((i) => i.track?.id ?? "")
+    .filter(Boolean);
+}
+
 /** Search Spotify for an artist by name, returns the best match or null. */
 export async function searchArtist(name: string, token: string): Promise<ArtistSummary | null> {
   const data = (await spotifyGet(

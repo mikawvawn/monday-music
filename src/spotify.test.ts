@@ -1,8 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeArtist, artistsMatch, isRecentRelease } from "./spotify.js";
+import { normalizeArtist, artistsMatch, isRecentRelease, interleaveByArtist } from "./spotify.js";
 import { filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
 import type { CuratedRelease } from "./claude.js";
+import type { Track } from "./spotify.js";
+
+const mkTrack = (id: string, artistId: string, artist: string): Track => ({
+  id,
+  name: `Song ${id}`,
+  artist,
+  artistId,
+  artistIds: [artistId],
+  album: "Album",
+  url: `https://open.spotify.com/track/${id}`,
+});
 
 const mkItem = (artist: string, title: string): CuratedRelease => ({
   artist,
@@ -131,4 +142,58 @@ test("filterNewsByReleaseArtists: no overlap is a no-op", () => {
   const news = [mkItem("Wednesday", "Tour news"), mkItem("Horsegirl", "Horsegirl interview")];
   const out = filterNewsByReleaseArtists(news, releases, 5);
   assert.equal(out.length, 2);
+});
+
+// ── interleaveByArtist ─────────────────────────────────────────────────────
+
+test("interleaveByArtist: respects count cap", () => {
+  const tracks = [
+    mkTrack("t1", "a1", "Artist A"),
+    mkTrack("t2", "a2", "Artist B"),
+    mkTrack("t3", "a3", "Artist C"),
+    mkTrack("t4", "a4", "Artist D"),
+    mkTrack("t5", "a5", "Artist E"),
+  ];
+  const out = interleaveByArtist(tracks, 3);
+  assert.equal(out.length, 3);
+});
+
+test("interleaveByArtist: no same-artist back-to-back when avoidable", () => {
+  const tracks = [
+    mkTrack("t1", "a1", "Artist A"),
+    mkTrack("t2", "a1", "Artist A"), // same artist as t1
+    mkTrack("t3", "a2", "Artist B"),
+    mkTrack("t4", "a2", "Artist B"), // same artist as t3
+  ];
+  const out = interleaveByArtist(tracks, 4);
+  assert.equal(out.length, 4);
+  // Adjacent tracks should never share the same artistId
+  for (let i = 1; i < out.length; i++) {
+    assert.notEqual(
+      out[i].artistId,
+      out[i - 1].artistId,
+      `Tracks ${i - 1} and ${i} have the same artist: ${out[i].artist}`,
+    );
+  }
+});
+
+test("interleaveByArtist: deduplicates by track id", () => {
+  const tracks = [
+    mkTrack("t1", "a1", "Artist A"),
+    mkTrack("t1", "a1", "Artist A"), // duplicate id
+    mkTrack("t2", "a2", "Artist B"),
+  ];
+  const out = interleaveByArtist(tracks, 10);
+  const ids = out.map((t) => t.id);
+  assert.equal(ids.length, new Set(ids).size, "duplicate track ids found in output");
+});
+
+test("interleaveByArtist: returns all tracks when count exceeds pool", () => {
+  const tracks = [mkTrack("t1", "a1", "A"), mkTrack("t2", "a2", "B")];
+  const out = interleaveByArtist(tracks, 100);
+  assert.equal(out.length, 2);
+});
+
+test("interleaveByArtist: empty input returns empty output", () => {
+  assert.deepEqual(interleaveByArtist([], 10), []);
 });
