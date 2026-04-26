@@ -5,6 +5,9 @@ import {
   getTopTracks,
   getRecentPlaylists,
   getUserId,
+  createPlaylist,
+  addTracksToPlaylist,
+  getPlaylistTracks,
   getTopArtists,
   buildDiscoveryPool,
   interleaveByArtist,
@@ -24,7 +27,7 @@ async function preview() {
   const token = await getAccessToken();
   console.log("Spotify token obtained");
 
-  const [, recentTracks, topTracks, topTracksShortTerm, recentPlaylists, rawReleases] = await Promise.all([
+  const [userId, recentTracks, topTracks, topTracksShortTerm, recentPlaylists, rawReleases] = await Promise.all([
     getUserId(token),
     getRecentlyPlayed(token),
     getTopTracks(token),
@@ -83,11 +86,17 @@ async function preview() {
   const news = filterNewsByReleaseArtists(curated.news, validatedReleases, NEWS_TARGET);
   console.log(`News final: ${news.length}`);
 
+  // Create a real playlist so the link in the preview HTML is clickable and verifiable
+  console.log("Creating Spotify playlist (preview — no email will be sent)...");
+  const playlist = await createPlaylist(userId, plan.name, plan.description, token);
+  await addTracksToPlaylist(playlist.id, foundTracks.map((t) => t.id), token);
+  console.log(`Playlist created: ${playlist.url}`);
+
   const html = buildEmailHtml(
     plan.name,
     plan.description,
     longDescription,
-    "https://open.spotify.com/playlist/preview",
+    playlist.url,
     foundTracks,
     validatedReleases,
     news,
@@ -98,6 +107,30 @@ async function preview() {
   const outPath = "/tmp/monday-music-preview.html";
   writeFileSync(outPath, html);
   console.log(`Preview written to ${outPath}`);
+
+  // Verify playlist tracks were actually added to Spotify
+  console.log("\nVerifying playlist contents against Spotify...");
+  await new Promise((r) => setTimeout(r, 2000)); // brief pause for Spotify to index
+  const liveTrackIds = await getPlaylistTracks(playlist.id, token);
+  const expectedIds = foundTracks.map((t) => t.id);
+  const missing = expectedIds.filter((id) => !liveTrackIds.includes(id));
+  const extra = liveTrackIds.filter((id) => !expectedIds.includes(id));
+  if (missing.length === 0 && extra.length === 0) {
+    console.log(`✓ Playlist verified: all ${expectedIds.length} tracks present on Spotify`);
+  } else {
+    if (missing.length > 0) {
+      console.error(`✗ Missing ${missing.length} track(s) from Spotify playlist:`);
+      missing.forEach((id) => {
+        const t = foundTracks.find((t) => t.id === id);
+        console.error(`  - ${t ? `${t.artist} — ${t.name}` : id}`);
+      });
+    }
+    if (extra.length > 0) {
+      console.warn(`⚠ ${extra.length} unexpected track(s) in Spotify playlist (not in expected list)`);
+    }
+  }
+  console.log(`\nExpected tracks (${foundTracks.length}):`);
+  foundTracks.forEach((t, i) => console.log(`  ${i + 1}. ${t.artist} — ${t.name}`));
 }
 
 preview().catch((err) => {
