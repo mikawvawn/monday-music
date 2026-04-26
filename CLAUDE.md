@@ -100,28 +100,14 @@ npm run build  # catch TS errors locally first
 git push origin main
 ```
 
-## Known Issues
-
-- **This Week Wrapped section is broken** — the section does not render correctly. Not yet diagnosed. Reproduce with a preview run before attempting a fix.
-- **Playlist description line too long** — `longDescription` renders as an unbroken wall of text in the email. Needs `max-width` or text truncation in `src/email.ts`.
-
 ## Backlog (prioritized)
 
-1. **Fix This Week Wrapped** — reproduce failure in preview, diagnose, fix.
-2. **Remove NR source tags and Read More links** — one `src/email.ts` change. Hides the single-source exposure problem while source diversity is unsolved. Music News keeps its Read More buttons.
-3. **Source expansion** — investigate rateyourmusic.com as primary new source; also audit the 4 broken feeds. Goal: genre diversity beyond Stereogum + Bandcamp Daily.
-4. **Playlist description line length** — CSS/text fix in `src/email.ts`.
-5. **Auto-generate playlist cover image** — use playlist name + theme + longDescription as image generation prompt; upload to Spotify as cover; use in email header. Needs image generation API integration + `uploadPlaylistCover()` Spotify endpoint.
-6. **Overall email design** — tied to playlist image; the generated cover should anchor the visual identity of the email.
-7. **Taste profiling / multi-user** — `TASTE_PROFILE` in `src/claude.ts` is currently hardcoded for Mike. Needs to become a per-user configurable input derived from listening data + onboarding. Tied to the multi-user backend work.
+**Source expansion** — investigate rateyourmusic.com as primary new source; also audit the 4 broken feeds. Goal: genre diversity beyond Stereogum + Bandcamp Daily.
+**Auto-generate playlist cover image** — use playlist name + theme + longDescription as image generation prompt; upload to Spotify as cover; use in email header. Needs image generation API integration + `uploadPlaylistCover()` Spotify endpoint.
+**Overall email design** — tied to playlist image; the generated cover should anchor the visual identity of the email.
+**Taste profiling / multi-user** — `TASTE_PROFILE` in `src/claude.ts` is currently hardcoded for Mike. Needs to become a per-user configurable input derived from listening data + onboarding. Tied to the multi-user backend work.
 
-## Copy Audit Notes
 
-- The next low-priority pass should focus on newsletter title, `Recent Favorites`, the `Top Artists` / `Top Tracks` treatment, and the greeting in the top-right header.
-- New Releases should lose the source pill and likely gain a one-word genre pill instead.
-- `Music News` is in acceptable shape for now.
-- The playlist section should get a shorter description and an image treatment.
-- Treat this as a design and copy polish round after the current feature work is merged.
 
 ## Explicitly Deferred
 
