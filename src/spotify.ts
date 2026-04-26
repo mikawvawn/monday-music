@@ -58,7 +58,7 @@ async function spotifyGet(path: string, token: string, attempt = 0): Promise<unk
     await sleep((attempt + 1) * 2000);
     return spotifyGet(path, token, attempt + 1);
   }
-  if (!res.ok) throw new Error(`Spotify GET ${path} failed: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Spotify GET ${path} failed (${res.status}): ${await res.text()}`);
   return res.json();
 }
 
@@ -317,4 +317,95 @@ export async function searchAlbumArt(
 ): Promise<string | null> {
   const { imageUrl } = await searchAlbumInfo(artist, title, token);
   return imageUrl;
+}
+
+
+/** Search Spotify for an artist by name, returns the best match or null. */
+export async function searchArtist(name: string, token: string): Promise<ArtistSummary | null> {
+  const data = (await spotifyGet(
+    `/search?q=${encodeURIComponent(name)}&type=artist&limit=1`,
+    token,
+  )) as { artists: { items: { id: string; name: string; genres: string[] }[] } };
+  const item = data.artists?.items?.[0];
+  if (!item) return null;
+  return { id: item.id, name: item.name, genres: item.genres ?? [] };
+}
+
+/** Search for tracks by a specific artist name. Returns up to `limit` results. */
+export async function searchTracksByArtist(artistName: string, token: string, limit = 5): Promise<Track[]> {
+  const q = encodeURIComponent(`artist:${artistName}`);
+  const data = (await spotifyGet(`/search?q=${q}&type=track&limit=${limit}`, token)) as {
+    tracks: {
+      items: {
+        id: string;
+        name: string;
+        artists: { id: string; name: string }[];
+        album: { name: string };
+        external_urls: { spotify: string };
+      }[];
+    };
+  };
+  return (data.tracks?.items ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    artist: t.artists[0]?.name ?? "",
+    artistId: t.artists[0]?.id ?? "",
+    artistIds: t.artists.map((a) => a.id).filter(Boolean),
+    album: t.album.name,
+    url: t.external_urls.spotify,
+  }));
+}
+
+/**
+ * Build a discovery track pool from a list of artist names Claude suggested.
+ * Uses search (the only broadly available Spotify endpoint) to find tracks per artist.
+ */
+export async function buildDiscoveryPool(
+  discoveryArtistNames: string[],
+  token: string,
+  tracksPerArtist = 3,
+): Promise<Track[]> {
+  // Search for tracks by each artist in parallel
+  const trackLists = await Promise.all(
+    discoveryArtistNames.map((name) =>
+      searchTracksByArtist(name, token, tracksPerArtist).then(
+        (tracks) => { console.log(`  "${name}" → ${tracks.length} tracks`); return tracks; },
+        (err) => { console.warn(`  "${name}" search error:`, err.message); return [] as Track[]; },
+      ),
+    ),
+  );
+
+  // Flatten and deduplicate by track ID
+  const seen = new Set<string>();
+  const pool: Track[] = [];
+  for (const tracks of trackLists) {
+    for (const t of tracks) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        pool.push(t);
+      }
+    }
+  }
+  return pool;
+}
+
+/**
+ * Select up to `count` tracks from `candidates`, avoiding same-artist back-to-back.
+ */
+export function interleaveByArtist(candidates: Track[], count: number): Track[] {
+  const used = new Set<string>();
+  const result: Track[] = [];
+  let lastArtistId = "";
+
+  while (result.length < count) {
+    const pool = candidates.filter((t) => !used.has(t.id));
+    if (pool.length === 0) break;
+    const preferred = pool.filter((t) => t.artistId !== lastArtistId);
+    const pick = (preferred.length > 0 ? preferred : pool)[0];
+    used.add(pick.id);
+    lastArtistId = pick.artistId;
+    result.push(pick);
+  }
+
+  return result;
 }

@@ -152,7 +152,7 @@ function newsSection(news: CuratedRelease[]): string {
     return `<tr>
       <td style="padding:10px 0;border-bottom:1px solid ${BORDER};">
         <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="vertical-align:top;padding-right:10px;white-space:nowrap;">
+          <td style="vertical-align:top;padding-right:10px;white-space:nowrap;width:90px;">
             <span style="display:inline-block;color:${color};border:1px solid ${color};font-family:'Courier New',Courier,monospace;font-size:8px;letter-spacing:.08em;padding:2px 5px;border-radius:2px;">${label}</span>
           </td>
           <td style="font-size:12px;color:${TEXT};line-height:1.55;">
@@ -193,7 +193,7 @@ function playlistSection(
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       ${secHeader(sectionNum, "YOUR PLAYLIST", `${tracks.length} TRACKS`)}
       <tr><td style="padding:14px 10px 8px;">
-        <p style="font-size:13px;color:${TEXT};line-height:1.75;margin:0;">${esc(longDescription)}</p>
+        <p style="font-size:13px;color:${TEXT};line-height:1.75;margin:0;">${esc(longDescription.split(/(?<=[.!?])\s+/).slice(0, 2).join(" "))}</p>
       </td></tr>
       <tr><td style="padding:2px 0 0;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">${preview}</table>

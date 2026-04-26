@@ -62,7 +62,13 @@ export async function fetchNewReleases(): Promise<NewRelease[]> {
   const results = await Promise.allSettled(
     SOURCES.map(async ({ name, url }) => {
       const res = await fetch(url, {
-        headers: { "User-Agent": "monday-music-bot/1.0" },
+        headers: {
+          // Many publisher CDNs (Pitchfork, Cloudflare-fronted sites like RA) reject
+          // bot-shaped UAs at the edge. Use a real-browser UA so the feed actually loads.
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+        },
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error(`${name} RSS fetch failed: ${res.status}`);

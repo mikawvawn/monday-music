@@ -4,12 +4,13 @@ import {
   getRecentlyPlayed,
   getTopTracks,
   getRecentPlaylists,
-  searchTrack,
   getUserId,
   getTopArtists,
+  buildDiscoveryPool,
+  interleaveByArtist,
   type Track,
 } from "./spotify.js";
-import { generatePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
+import { generatePlaylist, describePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
 import { buildEmailHtml } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
 import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
@@ -42,19 +43,20 @@ async function preview() {
     curateNewReleases(rawReleases, recentArtists, topArtists),
     getTopArtists(token, "short_term").catch(() => []),
   ]);
-  console.log(`Playlist: "${plan.name}" | Release candidates: ${curated.releases.length} | News candidates: ${curated.news.length}`);
+  console.log(`Playlist: "${plan.name}" (${plan.theme}) | discovery artists: ${plan.discoveryArtists.join(", ")}`);
+  console.log(`Release candidates: ${curated.releases.length} | News candidates: ${curated.news.length}`);
   console.log(`Short-term top artists fetched: ${topArtistsShortTerm.length}`);
   console.log(`Short-term top tracks fetched: ${topTracksShortTerm.length}`);
 
-  console.log("Searching Spotify for tracks...");
-  const foundTracks: Track[] = [];
-  for (const suggestion of plan.tracks) {
-    const track = await searchTrack(`${suggestion.track} ${suggestion.artist}`, token);
-    if (track) {
-      foundTracks.push(track);
-      console.log(`  ✓ ${track.artist} — ${track.name}`);
-    }
-  }
+  console.log("Building discovery pool...");
+  const candidates = await buildDiscoveryPool(plan.discoveryArtists, token);
+  console.log(`  ${candidates.length} candidate tracks in pool`);
+
+  const foundTracks = interleaveByArtist(candidates, 20);
+  console.log(`Playlist: ${foundTracks.length} tracks`);
+  foundTracks.forEach((t) => console.log(`  ${t.artist} — ${t.name}`));
+
+  const longDescription = await describePlaylist(foundTracks, plan.name, plan.theme);
 
   console.log("Validating release candidates...");
   let { kept: validatedReleases, rejectedUrls } = await enrichAndFilterReleases(
@@ -84,7 +86,7 @@ async function preview() {
   const html = buildEmailHtml(
     plan.name,
     plan.description,
-    plan.longDescription,
+    longDescription,
     "https://open.spotify.com/playlist/preview",
     foundTracks,
     validatedReleases,
