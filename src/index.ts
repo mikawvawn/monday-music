@@ -3,14 +3,15 @@ import {
   getRecentlyPlayed,
   getTopTracks,
   getRecentPlaylists,
-  searchTrack,
   getUserId,
   createPlaylist,
   addTracksToPlaylist,
   getTopArtists,
+  buildDiscoveryPool,
+  interleaveByArtist,
   type Track,
 } from "./spotify.js";
-import { generatePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
+import { generatePlaylist, describePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
 import { sendEmail } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
 import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
@@ -49,27 +50,26 @@ async function run() {
       return [];
     }),
   ]);
-  console.log(`Playlist: "${plan.name}" (${plan.theme}) | ${plan.tracks.length} tracks suggested`);
+  console.log(`Playlist: "${plan.name}" (${plan.theme}) | discovery artists: ${plan.discoveryArtists.join(", ")}`);
   console.log(`Release candidates: ${curated.releases.length} | News candidates: ${curated.news.length}`);
   console.log(`Short-term top artists fetched: ${topArtistsShortTerm.length}`);
   console.log(`Short-term top tracks fetched: ${topTracksShortTerm.length}`);
 
-  // Search Spotify for each playlist track
-  console.log("Searching Spotify for tracks...");
-  const foundTracks: Track[] = [];
-  for (const suggestion of plan.tracks) {
-    const track = await searchTrack(`${suggestion.track} ${suggestion.artist}`, token);
-    if (track) {
-      foundTracks.push(track);
-      console.log(`  ✓ ${track.artist} — ${track.name}`);
-    } else {
-      console.log(`  ✗ Not found: ${suggestion.artist} — ${suggestion.track}`);
-    }
-  }
+  // Build discovery pool via artist search, interleave artists, cap at 20
+  console.log("Building discovery pool...");
+  const candidates = await buildDiscoveryPool(plan.discoveryArtists, token);
+  console.log(`  ${candidates.length} candidate tracks in pool`);
+
+  const foundTracks = interleaveByArtist(candidates, 20);
+  console.log(`Playlist: ${foundTracks.length} tracks`);
+  foundTracks.forEach((t) => console.log(`  ${t.artist} — ${t.name}`));
 
   if (foundTracks.length < 5) {
-    throw new Error(`Too few tracks found (${foundTracks.length}), aborting`);
+    throw new Error(`Too few tracks after curve ordering (${foundTracks.length}), aborting`);
   }
+
+  // Write the playlist description now that we know the actual tracks
+  const longDescription = await describePlaylist(foundTracks, plan.name, plan.theme);
 
   // Validate release candidates against Spotify (artist match + recency). Walk in ranked
   // order, keep first NR_TARGET that pass. If short, retry with additional candidates.
@@ -108,7 +108,7 @@ async function run() {
   await sendEmail(
     plan.name,
     plan.description,
-    plan.longDescription,
+    longDescription,
     playlist.url,
     foundTracks,
     validatedReleases,
