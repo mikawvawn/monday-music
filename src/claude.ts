@@ -192,10 +192,11 @@ const BUCKET_RULES = `You produce TWO buckets:
 "news" — everything else worth covering that does NOT go in "releases": album announcements for future drops, interviews, tour announcements, reissues, essays, industry news. Each news pick must still connect to an artist in Big Mike's recent or top listening.
 
 Constraints for both buckets:
-- Prioritize picks that directly connect to artists Big Mike has listened to recently or has in his top artists. If there are not enough strong direct matches, include adjacent picks that clearly fit the same taste lane (indie/left-field, alt-pop, electronic, underground rap/R&B) and explain the fit in the blurb. Skip anything mainstream, overhyped, or outside his wheelhouse.
+- Prioritize picks that directly connect to artists Big Mike has listened to recently or has in his top artists. If there are not enough strong direct matches, include adjacent picks that clearly fit the same taste lane (indie/left-field, alt-pop, electronic, underground rap/R&B) and explain the fit in the blurb.
 - No more than 2 items from the same publication WITHIN a bucket (max 2 releases from the same [source], and independently max 2 news from the same [source]). Spread picks across sources.
 - **No artist overlap between the two buckets.** If an artist appears in "releases", do NOT pick any news item about that same artist — the release is the primary story, and a news item about the same artist is redundant. Use "news" for DIFFERENT artists that he'd care about. Fill both buckets with a mix of artists.
 - Order each bucket by how strongly it fits Big Mike's taste — best first.
+- If an item is a roundup/list ("new albums to stream", "best songs this week"), you MAY extract one concrete release from that item and return it as a normal release pick, as long as the returned artist/title is explicit and currently streamable.
 
 For each pick, write exactly two sentences for the blurb:
 1. One sentence describing the item — for releases, include where the band is from and what genre/sound they play; for news, describe the story (what was announced / who was interviewed / what's happening).
@@ -236,7 +237,7 @@ export async function curateNewReleases(
 
 ${BUCKET_RULES}
 
-Return up to 15 items in "releases" and up to 10 items in "news", ranked best-first.
+Return up to 15 items in "releases" and up to 10 items in "news", ranked best-first. Aim for at least 10 releases when possible.
 
 ${BUCKET_RESPONSE_SHAPE}`;
 

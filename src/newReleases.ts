@@ -117,6 +117,55 @@ function splitArtistTitle(rawTitle: string): { artist: string; title: string } {
   return { artist: "", title: rawTitle };
 }
 
+function titleCaseFromSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((w) => (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
+function enrichArtistTitle(
+  sourceName: string,
+  url: string,
+  rawTitle: string,
+  parsed: { artist: string; title: string }
+): { artist: string; title: string } {
+  let { artist, title } = parsed;
+
+  // "Artist announce(s) new album/EP/single Title"
+  if (!artist) {
+    const announceMatch = rawTitle.match(
+      /^(.+?)\s+announces?\s+new\s+(?:album|record|ep|single)\s+["“]?([^"”]+)["”]?/i
+    );
+    if (announceMatch) {
+      artist = announceMatch[1].trim();
+      title = announceMatch[2].trim();
+    }
+  }
+
+  // Pitchfork review URLs are highly structured: /reviews/albums/{artist}-{album}/
+  if (!artist && sourceName === "Pitchfork") {
+    const m = url.match(/\/reviews\/albums\/([^/]+)\/?$/i);
+    if (m?.[1]) {
+      const slug = m[1].toLowerCase();
+      const split = slug.match(/^([a-z0-9]+)-(.+)$/);
+      if (split) {
+        artist = titleCaseFromSlug(split[1]);
+        title = titleCaseFromSlug(split[2]);
+      }
+    }
+  }
+
+  // Paste review URLs usually include /music/{artist}/{album-or-topic}
+  if (!artist && sourceName === "Paste") {
+    const m = url.match(/\/music\/([^/]+)\/([^/?#]+)/i);
+    if (m?.[1]) artist = titleCaseFromSlug(m[1]);
+  }
+
+  return { artist, title };
+}
+
 function shouldKeepItem(source: SourceConfig, title: string, url: string): boolean {
   if (source.includeTitlePatterns && !source.includeTitlePatterns.some((rx) => rx.test(title))) return false;
   if (source.excludeTitlePatterns && source.excludeTitlePatterns.some((rx) => rx.test(title))) return false;
@@ -142,7 +191,8 @@ function parseItems(xml: string, source: SourceConfig, cutoff: Date): NewRelease
     if (!rawTitle || !url) continue;
     if (!shouldKeepItem(source, rawTitle, url)) continue;
 
-    const { artist, title } = splitArtistTitle(rawTitle);
+    const parsed = splitArtistTitle(rawTitle);
+    const { artist, title } = enrichArtistTitle(source.name, url, rawTitle, parsed);
 
     results.push({ title, artist, url, description, source: source.name, publishedAt });
   }
