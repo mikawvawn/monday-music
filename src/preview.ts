@@ -14,6 +14,7 @@ import {
   type Track,
 } from "./spotify.js";
 import { generatePlaylist, describePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
+import { buildTasteProfile } from "./profile.js";
 import { buildEmailHtml } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
 import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
@@ -27,23 +28,26 @@ async function preview() {
   const token = await getAccessToken();
   console.log("Spotify token obtained");
 
-  const [userId, recentTracks, topTracks, topTracksShortTerm, recentPlaylists, rawReleases] = await Promise.all([
+  const [userId, recentTracks, topTracks, topTracksShortTerm, recentPlaylists, rawReleases, topArtistsMedium] = await Promise.all([
     getUserId(token),
     getRecentlyPlayed(token),
     getTopTracks(token),
     getTopTracks(token, "short_term"),
     getRecentPlaylists(token),
     fetchNewReleases().then((r) => { console.log(`Fetched ${r.length} releases from RSS`); return r; }),
+    getTopArtists(token, "medium_term").catch(() => []),
   ]);
 
   const recentArtists = [...new Set(recentTracks.map((t) => t.artist))];
   const topArtists = [...new Set(topTracks.map((t) => t.artist))];
   const recentPlaylistNames = recentPlaylists.map((p) => p.name);
+  const tasteProfile = buildTasteProfile(topArtistsMedium, "Mike");
+  console.log(`Taste profile built from ${topArtistsMedium.length} top artists`);
 
   console.log("Asking Claude...");
   const [plan, curated, topArtistsShortTerm] = await Promise.all([
-    generatePlaylist(recentTracks, topTracks, recentPlaylistNames),
-    curateNewReleases(rawReleases, recentArtists, topArtists),
+    generatePlaylist(recentTracks, topTracks, recentPlaylistNames, tasteProfile),
+    curateNewReleases(rawReleases, recentArtists, topArtists, tasteProfile),
     getTopArtists(token, "short_term").catch(() => []),
   ]);
   console.log(`Playlist: "${plan.name}" (${plan.theme}) | discovery artists: ${plan.discoveryArtists.join(", ")}`);
@@ -70,7 +74,8 @@ async function preview() {
   if (validatedReleases.length < NR_TARGET) {
     console.log(`Only ${validatedReleases.length}/${NR_TARGET} releases kept — asking Claude for more candidates...`);
     const alreadySeenUrls = [...rejectedUrls, ...validatedReleases.map((r) => r.url)];
-    const more = await curateMoreReleases(rawReleases, recentArtists, topArtists, alreadySeenUrls, 10).catch((e) => {
+    const alreadyKeptArtists = validatedReleases.map((r) => r.artist).filter(Boolean);
+    const more = await curateMoreReleases(rawReleases, recentArtists, topArtists, alreadySeenUrls, alreadyKeptArtists, 10, tasteProfile).catch((e) => {
       console.warn(`Retry curation failed: ${e.message}`);
       return [] as typeof curated.releases;
     });

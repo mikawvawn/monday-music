@@ -43,21 +43,21 @@ function parseJson<T>(text: string): T {
   }
 }
 
-const TASTE_PROFILE = `Big Mike's taste: indie rock / noise pop / shoegaze (Just Mustard, feeble little horse, Water from Your Eyes, Horsegirl, Chanel Beads, Alex G, Wednesday, Snail Mail, Slow Pulp), Brazilian / world music (Jorge Ben Jor, Novos Baianos, Milton Nascimento, Djavan), electronic (house, techno, downtempo, experimental, ambient), R&B / soul (Frank Ocean, Thundercat, Blood Orange). He skews underground — one level under obvious names. Already knows Slowdive, Grouper, Adrianne Lenker, Steve Lacy, Tim Maia, Peel Dream Magazine, bdrmm, Mk.gee.`;
 
 export async function generatePlaylist(
   recentTracks: Track[],
   topTracks: Track[],
-  recentPlaylistNames: string[]
+  recentPlaylistNames: string[],
+  tasteProfile: string
 ): Promise<PlaylistPlan> {
   const client = new Anthropic();
 
   const recentArtists = [...new Set(recentTracks.map((t) => t.artist))].slice(0, 20).join(", ");
   const topArtists = [...new Set(topTracks.map((t) => t.artist))].slice(0, 30).join(", ");
 
-  const prompt = `You are building a weekly music discovery playlist for a listener called Big Mike.
+  const prompt = `You are building a weekly music discovery playlist.
 
-${TASTE_PROFILE}
+${tasteProfile}
 
 His recent listening (last few days):
 ${recentArtists}
@@ -70,7 +70,7 @@ ${recentPlaylistNames.slice(0, 5).join(", ") || "none yet"}
 
 Your job:
 1. Pick ONE genre thread that feels fresh relative to the recent playlist names.
-2. Suggest 7–9 artists that are similar to Big Mike's known artists but that he likely hasn't heard much — one level under the obvious names. They should all fit the same genre thread. Do not include any artist already in his recent listening or top artists lists above.
+2. Suggest 7–9 artists that are similar to the listener's known artists but that they likely haven't heard much — one level under the obvious names. They should all fit the same genre thread. Do not include any artist already in their recent listening or top artists lists above.
 3. Come up with an evocative playlist name (something atmospheric, not just the genre name).
 
 Respond with ONLY valid JSON, no markdown:
@@ -173,13 +173,13 @@ function capItemsPerSource(items: CuratedRelease[], maxPerSource: number): Curat
   return kept;
 }
 
-function curationPromptHeader(recentArtists: string[], topArtists: string[], releaseList: string): string {
-  return `You are curating the music section of a weekly newsletter for Big Mike.
+function curationPromptHeader(recentArtists: string[], topArtists: string[], releaseList: string, tasteProfile: string): string {
+  return `You are curating the music section of a weekly newsletter.
 
-${TASTE_PROFILE}
+${tasteProfile}
 
-His recent listening: ${recentArtists.slice(0, 20).join(", ")}
-His top artists: ${topArtists.slice(0, 20).join(", ")}
+Recent listening: ${recentArtists.slice(0, 20).join(", ")}
+Top artists: ${topArtists.slice(0, 20).join(", ")}
 
 Here are items from music publications this week:
 ${releaseList}`;
@@ -187,20 +187,20 @@ ${releaseList}`;
 
 const BUCKET_RULES = `You produce TWO buckets:
 
-"releases" — items that describe an ACTUAL, currently-streamable album / EP / single (out now, released within the past ~3 weeks). A "new single" counts ONLY if it is already playable. Announcements of upcoming albums, reissues of old records, interviews, essays, and tour news DO NOT go here.
+"releases" — items that appear to describe a new album, EP, single, or track from the past month. Lean toward inclusion when uncertain — Spotify will validate availability and recency, so do NOT pre-filter based on your own estimate of release date or streamability. Propose anything that plausibly looks like a recent release. Exclude only: announcements of future albums not yet out, reissues of old records (10+ years old), interviews, essays, tour news, live recordings, concert films, live debuts, and "Various Artists" compilations.
 
 "news" — everything else worth covering that does NOT go in "releases": album announcements for future drops, interviews, tour announcements, reissues, essays, industry news. Each news pick must still connect to an artist in Big Mike's recent or top listening.
 
 Constraints for both buckets:
 - Prioritize picks that directly connect to artists Big Mike has listened to recently or has in his top artists. If there are not enough strong direct matches, include adjacent picks that clearly fit the same taste lane (indie/left-field, alt-pop, electronic, underground rap/R&B) and explain the fit in the blurb.
-- No more than 2 items from the same publication WITHIN a bucket (max 2 releases from the same [source], and independently max 2 news from the same [source]). Spread picks across sources.
+- No more than 4 items from the same publication WITHIN a bucket (max 4 releases from the same [source], and independently max 4 news from the same [source]). Spread picks across sources.
 - **No artist overlap between the two buckets.** If an artist appears in "releases", do NOT pick any news item about that same artist — the release is the primary story, and a news item about the same artist is redundant. Use "news" for DIFFERENT artists that he'd care about. Fill both buckets with a mix of artists.
-- Order each bucket by how strongly it fits Big Mike's taste — best first.
+- Order each bucket by how strongly it fits the listener's taste — best first.
 - If an item is a roundup/list ("new albums to stream", "best songs this week"), you MAY extract one concrete release from that item and return it as a normal release pick, as long as the returned artist/title is explicit and currently streamable.
 
 For each pick, write exactly two sentences for the blurb:
 1. One sentence describing the item — for releases, include where the band is from and what genre/sound they play; for news, describe the story (what was announced / who was interviewed / what's happening).
-2. "For fans of [Artist Name], [Artist Name]." — both artists MUST come from his recent listening or top artists lists above.`;
+2. "For fans of [Artist Name], [Artist Name]." — both artists MUST come from the taste profile, recent listening, or top artists sections above.`;
 
 const BUCKET_RESPONSE_SHAPE = `Respond with ONLY a JSON OBJECT with EXACTLY these two top-level keys: "releases" and "news". Do NOT return a bare array. Do NOT return only one of the two keys. Both keys MUST be present, and both MUST be arrays (either may be empty if nothing qualifies, but you should almost always find at least a few news items this week).
 
@@ -226,18 +226,19 @@ No markdown. No preamble. No text outside the JSON object.`;
 export async function curateNewReleases(
   releases: NewRelease[],
   recentArtists: string[],
-  topArtists: string[]
+  topArtists: string[],
+  tasteProfile: string
 ): Promise<CuratedBuckets> {
   if (releases.length === 0) return { releases: [], news: [] };
 
   const client = new Anthropic();
   const releaseList = formatReleaseList(releases);
 
-  const prompt = `${curationPromptHeader(recentArtists, topArtists, releaseList)}
+  const prompt = `${curationPromptHeader(recentArtists, topArtists, releaseList, tasteProfile)}
 
 ${BUCKET_RULES}
 
-Return up to 15 items in "releases" and up to 10 items in "news", ranked best-first. Aim for at least 10 releases when possible.
+Return up to 20 items in "releases" and up to 10 items in "news", ranked best-first. Aim for at least 15 releases when possible.
 
 ${BUCKET_RESPONSE_SHAPE}`;
 
@@ -260,8 +261,8 @@ ${BUCKET_RESPONSE_SHAPE}`;
     return { releases: parsed as CuratedRelease[], news: [] };
   }
   const obj = parsed as Partial<CuratedBuckets>;
-  const releasesBucket = Array.isArray(obj.releases) ? capItemsPerSource(obj.releases, 2) : [];
-  const newsBucket = Array.isArray(obj.news) ? capItemsPerSource(obj.news, 2) : [];
+  const releasesBucket = Array.isArray(obj.releases) ? capItemsPerSource(obj.releases, 4) : [];
+  const newsBucket = Array.isArray(obj.news) ? capItemsPerSource(obj.news, 4) : [];
   return {
     releases: releasesBucket,
     news: newsBucket,
@@ -277,21 +278,30 @@ export async function curateMoreReleases(
   recentArtists: string[],
   topArtists: string[],
   excludedUrls: string[],
-  n: number
+  excludedArtists: string[],
+  n: number,
+  tasteProfile: string
 ): Promise<CuratedRelease[]> {
   if (releases.length === 0) return [];
 
   const client = new Anthropic();
   const releaseList = formatReleaseList(releases);
-  const excludedBlock = excludedUrls.length
-    ? `\n\nALREADY-REJECTED URLs (do NOT pick these again):\n${excludedUrls.map((u) => `- ${u}`).join("\n")}`
-    : "";
+  const excludedBlock = [
+    excludedUrls.length
+      ? `ALREADY-REJECTED URLs (do NOT pick these again):\n${excludedUrls.map((u) => `- ${u}`).join("\n")}`
+      : "",
+    excludedArtists.length
+      ? `ALREADY-FEATURED ARTISTS (already in this week's New Releases — do NOT pick again):\n${excludedArtists.map((a) => `- ${a}`).join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
-  const prompt = `${curationPromptHeader(recentArtists, topArtists, releaseList)}${excludedBlock}
+  const prompt = `${curationPromptHeader(recentArtists, topArtists, releaseList, tasteProfile)}${excludedBlock ? `\n\n${excludedBlock}` : ""}
 
 ${BUCKET_RULES}
 
-Return ONLY a JSON array of up to ${n} NEW "releases"-bucket items (no news bucket this time), ranked best-first. Do not repeat any of the already-rejected URLs above.
+Return ONLY a JSON array of up to ${n} NEW "releases"-bucket items (no news bucket this time), ranked best-first. Do not repeat any of the already-rejected URLs or already-featured artists above.
 
 Respond with ONLY valid JSON array, no markdown:
 [
