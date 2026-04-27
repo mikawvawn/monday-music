@@ -51,8 +51,9 @@ The pipeline runs in `src/index.ts` and has five stages:
 
 **1. Parallel data fetch**
 - Spotify: recent tracks (50), top tracks (50, medium-term), recent playlists, user ID, top artists with genres
-- RSS: 7 music publications via `src/newReleases.ts` → `NewRelease[]`
-- **Note:** As of April 2026 only 2 of 7 feeds work: Stereogum and Bandcamp Daily (~55 items/week). Pitchfork, Resident Advisor, Paste, and Pigeons & Planes are 404/403-ing. Fact returns 0 items.
+- RSS: source-configured publication feeds via `src/newReleases.ts` → `NewRelease[]`
+- **Current state (late April 2026):** feeds currently configured include Pitchfork, Stereogum, Bandcamp Daily, Resident Advisor, Paste, Fact, Pigeons & Planes, Brooklyn Vegan, Crack Magazine, The Fader, and Line of Best Fit.
+- **Observed reliability in latest preview/debug runs:** Pitchfork, Stereogum, Bandcamp Daily, Paste, Brooklyn Vegan, Crack, The Fader, and Line of Best Fit returned items; Resident Advisor and Pigeons & Planes still 404; Fact returns 0 items.
 
 **2. Parallel Claude calls** (`src/claude.ts`)
 - `generatePlaylist()` → `PlaylistPlan` with `name`, `description`, `longDescription`, `theme`, 18 `tracks[]`
@@ -100,12 +101,54 @@ npm run build  # catch TS errors locally first
 git push origin main
 ```
 
+## Session Notes (Apr 2026)
+
+### What changed this session
+
+- Added environment setup workflow:
+  - `.env.example`
+  - `scripts/setup-env.sh`
+  - `npm run setup:env`
+- Expanded and updated release-source ingestion in `src/newReleases.ts`:
+  - Added/updated source endpoints and source-specific include/exclude filters
+  - Added HTML entity decoding
+  - Added `enrichArtistTitle()` to recover artist/title from announcement-style titles and URL structure
+- Updated curation behavior in `src/claude.ts`:
+  - Interleave release-list prompt input across sources (reduces source-order bias)
+  - Keep hard cap of 2 picks per source in parsed model output
+  - Prompt allows extracting one concrete release from roundup/list items
+  - Prompt asks for a larger release candidate set when possible
+
+### Learnings from debug + preview runs
+
+- Biggest bottleneck is still not RSS fetch volume, but release-candidate contraction:
+  - raw fetched items were around ~60 in recent runs
+  - Claude often returned 4-5 release candidates
+  - Spotify validation + recency + dedupe frequently cut this to 3 final releases
+- Retry behavior currently underperforms because retry candidates often repeat already-kept artists and are removed by `dedupeReleasesByArtist()`.
+- Paste/Fader/Brooklyn Vegan are now feeding items, but their mixed "news + roundup + review" nature requires stronger extraction/normalization to convert into valid artist/title release candidates.
+- Spotify link correctness depends heavily on artist matching strictness:
+  - observed false positive example: "Dijon" matched "Honey Dijon" because of substring fallback in `artistsMatch()`.
+  - this is known and not yet fixed.
+- `preview.ts` successfully generates `/tmp/monday-music-preview.html`, but post-create playlist verification can fail with Spotify 403 on `getPlaylistTracks()`. This does not block HTML generation.
+
+### Current status
+
+- Source expansion and parser hardening are in progress and merged to `main`.
+- Environment setup friction is reduced (bootstrap script + example env).
+- Preview generation is functional for review loops.
+- New Releases section quality improved but still frequently lands below target (`NR_TARGET = 5`), commonly ending at 3.
+
 ## Backlog (prioritized)
 
-**Source expansion** — investigate rateyourmusic.com as primary new source; also audit the 4 broken feeds. Goal: genre diversity beyond Stereogum + Bandcamp Daily.
-**Auto-generate playlist cover image** — use playlist name + theme + longDescription as image generation prompt; upload to Spotify as cover; use in email header. Needs image generation API integration + `uploadPlaylistCover()` Spotify endpoint.
-**Overall email design** — tied to playlist image; the generated cover should anchor the visual identity of the email.
-**Taste profiling / multi-user** — `TASTE_PROFILE` in `src/claude.ts` is currently hardcoded for Mike. Needs to become a per-user configurable input derived from listening data + onboarding. Tied to the multi-user backend work.
+1. **Stabilize New Releases count to 5+ reliably** — improve candidate funnel so release candidates survive curation + validation + dedupe.
+2. **Fix artist matching false positives in Spotify enrichment** — tighten `artistsMatch()` token logic (remove unsafe substring matching behavior).
+3. **Improve retry strategy in `curateMoreReleases()`** — exclude already-kept artists explicitly (not only URLs) and request enough truly novel candidates.
+4. **Harden source extraction quality** — better parse/normalize for roundup-heavy feeds (Paste/Fader/Brooklyn Vegan) and stronger per-source artist/title heuristics.
+5. **Audit broken feeds** — revalidate/replace Resident Advisor and Pigeons & Planes endpoints; decide whether to keep Fact.
+6. **Auto-generate playlist cover image** — use playlist name + theme + longDescription prompt; upload via Spotify cover endpoint; reuse in email header.
+7. **Overall email design** — tie design to generated cover art.
+8. **Taste profiling / multi-user** — move away from hardcoded taste profile to user-derived config + onboarding, tied to multi-user backend.
 
 
 
