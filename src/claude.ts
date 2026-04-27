@@ -128,11 +128,49 @@ export interface CuratedBuckets {
   news: CuratedRelease[];
 }
 
-function formatReleaseList(releases: NewRelease[], max = 60): string {
-  return releases
-    .slice(0, max)
+function interleaveBySource(releases: NewRelease[], max: number): NewRelease[] {
+  const bySource = new Map<string, NewRelease[]>();
+  for (const release of releases) {
+    const queue = bySource.get(release.source);
+    if (queue) queue.push(release);
+    else bySource.set(release.source, [release]);
+  }
+
+  const sourceNames = [...bySource.keys()].sort();
+  const selected: NewRelease[] = [];
+  while (selected.length < max) {
+    let madeProgress = false;
+    for (const source of sourceNames) {
+      if (selected.length >= max) break;
+      const queue = bySource.get(source);
+      const item = queue?.shift();
+      if (!item) continue;
+      selected.push(item);
+      madeProgress = true;
+    }
+    if (!madeProgress) break;
+  }
+
+  return selected;
+}
+
+function formatReleaseList(releases: NewRelease[], max = 100): string {
+  return interleaveBySource(releases, max)
     .map((r, i) => `${i + 1}. [${r.source}] ${r.artist ? `${r.artist} — ` : ""}${r.title} | ${r.url}\n   ${r.description.slice(0, 150)}`)
     .join("\n");
+}
+
+function capItemsPerSource(items: CuratedRelease[], maxPerSource: number): CuratedRelease[] {
+  const counts = new Map<string, number>();
+  const kept: CuratedRelease[] = [];
+  for (const item of items) {
+    const key = item.source?.trim() || "Unknown";
+    const current = counts.get(key) ?? 0;
+    if (current >= maxPerSource) continue;
+    counts.set(key, current + 1);
+    kept.push(item);
+  }
+  return kept;
 }
 
 function curationPromptHeader(recentArtists: string[], topArtists: string[], releaseList: string): string {
@@ -154,7 +192,7 @@ const BUCKET_RULES = `You produce TWO buckets:
 "news" — everything else worth covering that does NOT go in "releases": album announcements for future drops, interviews, tour announcements, reissues, essays, industry news. Each news pick must still connect to an artist in Big Mike's recent or top listening.
 
 Constraints for both buckets:
-- Every pick must directly connect to an artist Big Mike has actually been listening to recently or has in his top artists. If you can't draw a clear line, skip it. Skip anything mainstream, overhyped, or outside his wheelhouse.
+- Prioritize picks that directly connect to artists Big Mike has listened to recently or has in his top artists. If there are not enough strong direct matches, include adjacent picks that clearly fit the same taste lane (indie/left-field, alt-pop, electronic, underground rap/R&B) and explain the fit in the blurb. Skip anything mainstream, overhyped, or outside his wheelhouse.
 - No more than 2 items from the same publication WITHIN a bucket (max 2 releases from the same [source], and independently max 2 news from the same [source]). Spread picks across sources.
 - **No artist overlap between the two buckets.** If an artist appears in "releases", do NOT pick any news item about that same artist — the release is the primary story, and a news item about the same artist is redundant. Use "news" for DIFFERENT artists that he'd care about. Fill both buckets with a mix of artists.
 - Order each bucket by how strongly it fits Big Mike's taste — best first.
@@ -221,9 +259,11 @@ ${BUCKET_RESPONSE_SHAPE}`;
     return { releases: parsed as CuratedRelease[], news: [] };
   }
   const obj = parsed as Partial<CuratedBuckets>;
+  const releasesBucket = Array.isArray(obj.releases) ? capItemsPerSource(obj.releases, 2) : [];
+  const newsBucket = Array.isArray(obj.news) ? capItemsPerSource(obj.news, 2) : [];
   return {
-    releases: Array.isArray(obj.releases) ? obj.releases : [],
-    news: Array.isArray(obj.news) ? obj.news : [],
+    releases: releasesBucket,
+    news: newsBucket,
   };
 }
 
