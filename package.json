@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "tsc && node --test dist/*.test.js",
-    "setup:env": "bash scripts/setup-env.sh"
+    "setup:env": "bash scripts/setup-env.sh",
+    "debug:releases": "node dist/debugReleases.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0"
