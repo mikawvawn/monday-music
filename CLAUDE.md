@@ -172,12 +172,16 @@ git push origin main
 
 ## Backlog (prioritized)
 
-1. **Fix artist matching false positives** — `artistsMatch()` in `src/spotify.ts` has a substring fallback (`na.includes(nb)`) causing false positives (e.g. "Dijon" → "Honey Dijon"). Remove or gate the substring path.
-2. **Audit broken feeds** — Resident Advisor (404), Pigeons & Planes (404), Fact (0 items, pivoted away from music reviews). Replace with active sources in the same taste lane.
-3. **Multi-user onboarding** — per-user config file (displayName, Spotify credentials). `buildTasteProfile()` already makes the Claude side user-agnostic; the remaining work is credential management and routing.
+1. **Multi-user onboarding (product goal)** — deploy once, share it: users land on an onboarding
+   screen, **Connect Spotify** (OAuth — not an API key) + enter email, then get a personalized
+   digest emailed every Monday automatically. Requires a backend + datastore + per-user weekly
+   job (reintroduces email delivery, per user). `buildTasteProfile()` + the generation core are
+   already user-agnostic. **Full design + phasing + gotchas (Spotify quota mode, Resend domain
+   verification, token storage) in [`notes/multi-user-onboarding.md`](notes/multi-user-onboarding.md).**
+2. **Fix artist matching false positives** — `artistsMatch()` in `src/spotify.ts` has a substring fallback (`na.includes(nb)`) causing false positives (e.g. "Dijon" → "Honey Dijon"). Remove or gate the substring path.
+3. **Audit broken feeds** — Resident Advisor (404), Pigeons & Planes (404), Fact (0 items, pivoted away from music reviews). Replace with active sources in the same taste lane.
 4. **Harden roundup extraction** — Paste/Brooklyn Vegan/Fader roundup items ("12 new albums to stream", "notable releases of the week") contain multiple releases but extract poorly. Improve artist/title parsing for these formats.
-5. **Auto-generate playlist cover image** — prompt → image → upload via Spotify cover endpoint; reuse in email header.
-6. **Email design** — audit layout, album art sizing, section spacing; tie design to cover art when that's ready.
+5. **Site design polish** — audit `render.ts` layout, album art sizing, section spacing; consider an auto-generated header image.
 
 ## Explicitly Deferred
 
