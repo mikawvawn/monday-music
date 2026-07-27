@@ -1,79 +1,54 @@
+import { writeFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import {
   getAccessToken,
   getRecentlyPlayed,
   getTopTracks,
-  getRecentPlaylists,
   getUserId,
-  createPlaylist,
-  addTracksToPlaylist,
   getTopArtists,
-  buildDiscoveryPool,
-  interleaveByArtist,
-  type Track,
 } from "./spotify.js";
-import { generatePlaylist, describePlaylist, curateNewReleases, curateMoreReleases } from "./claude.js";
+import { curateNewReleases, curateMoreReleases } from "./claude.js";
 import { buildTasteProfile } from "./profile.js";
-import { sendEmail } from "./email.js";
+import { buildSiteHtml } from "./render.js";
 import { fetchNewReleases } from "./newReleases.js";
 import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
 
 const NR_TARGET = 5;
 const NEWS_TARGET = 5;
+const OUT_PATH = process.env.OUT_PATH || "public/index.html";
 
 async function run() {
-  console.log("Starting Monday Music...");
+  console.log("Building Monday Music site...");
 
   const token = await getAccessToken();
   console.log("Spotify token obtained");
 
   // Fetch Spotify data + RSS feeds in parallel
-  const [userId, recentTracks, topTracks, topTracksShortTerm, recentPlaylists, rawReleases, topArtistsMedium] = await Promise.all([
+  const [userId, recentTracks, topTracks, topTracksShortTerm, rawReleases, topArtistsMedium] = await Promise.all([
     getUserId(token),
     getRecentlyPlayed(token),
     getTopTracks(token),
     getTopTracks(token, "short_term"),
-    getRecentPlaylists(token),
     fetchNewReleases().then((r) => { console.log(`Fetched ${r.length} new releases from RSS`); return r; }),
     getTopArtists(token, "medium_term").catch(() => []),
   ]);
-  console.log(`Got ${recentTracks.length} recent tracks, ${topTracks.length} top tracks`);
+  console.log(`Got ${recentTracks.length} recent tracks, ${topTracks.length} top tracks (user ${userId})`);
 
   const recentArtists = [...new Set(recentTracks.map((t) => t.artist))];
   const topArtists = [...new Set(topTracks.map((t) => t.artist))];
-  const recentPlaylistNames = recentPlaylists.map((p) => p.name);
   const tasteProfile = buildTasteProfile(topArtistsMedium, "Mike");
   console.log(`Taste profile built from ${topArtistsMedium.length} top artists`);
 
-  // Claude + short-term favorites in parallel
-  console.log("Asking Claude for playlist + new release curation...");
-  const [plan, curated, topArtistsShortTerm] = await Promise.all([
-    generatePlaylist(recentTracks, topTracks, recentPlaylistNames, tasteProfile),
+  // Claude curation + short-term top artists in parallel
+  console.log("Asking Claude for new-release curation...");
+  const [curated, topArtistsShortTerm] = await Promise.all([
     curateNewReleases(rawReleases, recentArtists, topArtists, tasteProfile),
     getTopArtists(token, "short_term").catch((err) => {
       console.warn("Short-term top artists fetch failed (non-fatal):", err.message);
       return [];
     }),
   ]);
-  console.log(`Playlist: "${plan.name}" (${plan.theme}) | discovery artists: ${plan.discoveryArtists.join(", ")}`);
   console.log(`Release candidates: ${curated.releases.length} | News candidates: ${curated.news.length}`);
-  console.log(`Short-term top artists fetched: ${topArtistsShortTerm.length}`);
-  console.log(`Short-term top tracks fetched: ${topTracksShortTerm.length}`);
-
-  // Build discovery pool via artist search, interleave artists, cap at 20
-  console.log("Building discovery pool...");
-  const candidates = await buildDiscoveryPool(plan.discoveryArtists, token);
-  console.log(`  ${candidates.length} candidate tracks in pool`);
-
-  const foundTracks = interleaveByArtist(candidates, 20);
-  console.log(`Playlist: ${foundTracks.length} tracks`);
-  foundTracks.forEach((t) => console.log(`  ${t.artist} — ${t.name}`));
-
-  if (foundTracks.length < 5) {
-    throw new Error(`Too few tracks after curve ordering (${foundTracks.length}), aborting`);
-  }
-
-  // Write the playlist description now that we know the actual tracks
-  const longDescription = await describePlaylist(foundTracks, plan.name, plan.theme);
 
   // Validate release candidates against Spotify (artist match + recency). Walk in ranked
   // order, keep first NR_TARGET that pass. If short, retry with additional candidates.
@@ -104,24 +79,11 @@ async function run() {
   const news = filterNewsByReleaseArtists(curated.news, validatedReleases, NEWS_TARGET);
   console.log(`News final: ${news.length}`);
 
-  // Create playlist
-  const playlist = await createPlaylist(userId, plan.name, plan.description, token);
-  await addTracksToPlaylist(playlist.id, foundTracks.map((t) => t.id), token);
-  console.log(`Playlist created: ${playlist.url}`);
-
-  // Send email
-  await sendEmail(
-    plan.name,
-    plan.description,
-    longDescription,
-    playlist.url,
-    foundTracks,
-    validatedReleases,
-    news,
-    topArtistsShortTerm,
-    topTracksShortTerm,
-  );
-
+  // Render the static site
+  const html = buildSiteHtml(validatedReleases, news, topArtistsShortTerm, topTracksShortTerm);
+  mkdirSync(dirname(OUT_PATH), { recursive: true });
+  writeFileSync(OUT_PATH, html);
+  console.log(`Site written to ${OUT_PATH} (${(html.length / 1024).toFixed(1)} KB)`);
   console.log("Done!");
 }
 

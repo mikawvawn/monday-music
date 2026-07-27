@@ -7,17 +7,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run build         # tsc → dist/
 npm test              # tsc + node --test dist/*.test.js
-npm start             # run full pipeline (needs env vars)
+npm start             # run pipeline → writes public/index.html (the static site)
 npm run dev           # ts-node (skips build step, for quick iteration)
-node dist/preview.js  # generate preview HTML only — no playlist created, no email sent
 npm run debug:releases  # full pipeline instrumentation — writes two CSVs to /tmp/
+fly deploy --remote-only  # build nginx image from public/ + deploy to Fly
 ```
 
 Source `.env` before running locally — the project does not use the dotenv package:
 ```bash
-set -a && source .env && set +a && unset ANTHROPIC_BASE_URL && node dist/preview.js
+set -a && source .env && set +a && unset ANTHROPIC_BASE_URL && node dist/index.js
 set -a && source .env && set +a && unset ANTHROPIC_BASE_URL && npm run debug:releases
 ```
+
+The generated site is `public/index.html` (gitignored — regenerated each run). Preview
+it locally with any static server, e.g. `python3 -m http.server 8899 --directory public`.
 
 ### Debug / diagnostic tools
 
@@ -40,7 +43,7 @@ Shows the exact taste profile string that will be sent to Claude on the next run
 
 ## Environment Variables
 
-All five must be set to run the full pipeline:
+Four vars are required to generate the site:
 
 | Var | Source |
 |-----|--------|
@@ -48,9 +51,9 @@ All five must be set to run the full pipeline:
 | `SPOTIFY_CLIENT_SECRET` | Spotify developer app |
 | `SPOTIFY_REFRESH_TOKEN` | OAuth flow (cached in `~/.spotify-mcp/tokens.json` locally) |
 | `ANTHROPIC_API_KEY` | Anthropic console |
-| `RESEND_API_KEY` | Resend dashboard (stored at `~/.resend_api_key`) |
 
-Preview mode only requires the Spotify vars + `ANTHROPIC_API_KEY` (no Resend needed).
+There is no email step anymore — `RESEND_API_KEY` is unused. Deploying to Fly (CI only)
+additionally needs `FLY_API_TOKEN` (GitHub repo secret; a Fly deploy token for the app).
 
 ## Spotify API Rules
 
@@ -68,7 +71,8 @@ You are helping build an application using the Spotify Web API. Follow these rul
 
 ## Architecture
 
-The pipeline runs in `src/index.ts` and has five stages:
+The pipeline runs in `src/index.ts` and produces a static web page (`public/index.html`).
+There is no Spotify playlist creation and no email — those were removed. Stages:
 
 **1. Parallel data fetch**
 - Spotify: recent tracks (50), top tracks (50, medium-term), recent playlists, user ID, top artists with genres
@@ -76,10 +80,9 @@ The pipeline runs in `src/index.ts` and has five stages:
 - **Current state (late April 2026):** feeds currently configured include Pitchfork, Stereogum, Bandcamp Daily, Resident Advisor, Paste, Fact, Pigeons & Planes, Brooklyn Vegan, Crack Magazine, The Fader, and Line of Best Fit.
 - **Observed reliability in latest preview/debug runs:** Pitchfork, Stereogum, Bandcamp Daily, Paste, Brooklyn Vegan, Crack, The Fader, and Line of Best Fit returned items; Resident Advisor and Pigeons & Planes still 404; Fact returns 0 items.
 
-**2. Parallel Claude calls** (`src/claude.ts`)
-- `generatePlaylist()` → `PlaylistPlan` with `name`, `description`, `longDescription`, `theme`, 18 `tracks[]`
+**2. Claude curation** (`src/claude.ts`)
 - `curateNewReleases()` → `CuratedBuckets { releases, news }` — two separate arrays, no artist overlap between them. Claude proposes up to 20 release candidates (aims for 15) + up to 10 news candidates ranked by fit.
-- Both functions receive a `tasteProfile` string built by `buildTasteProfile()` in `src/profile.ts` from the user's Spotify top 50 medium-term artists.
+- Receives a `tasteProfile` string built by `buildTasteProfile()` in `src/profile.ts` from the user's Spotify top 50 medium-term artists.
 
 **3. Sequential Spotify enrichment + validation**
 - Search each suggested track → build `foundTracks: Track[]`
@@ -87,11 +90,9 @@ The pipeline runs in `src/index.ts` and has five stages:
 - If fewer than 5 pass: calls `curateMoreReleases()` for up to 10 more candidates (excluding already-seen URLs), re-validates, merges with `dedupeReleasesByArtist()`.
 - `filterNewsByReleaseArtists()` drops any news item whose artist already appears in validated releases. Caps at `NEWS_TARGET = 5`.
 
-**4. Create playlist + send email**
-- `createPlaylist()` + `addTracksToPlaylist()` in Spotify
-- `buildEmailHtml()` → POST to Resend API → mvaughandc@gmail.com
-
-**Preview mode** (`src/preview.ts`) runs stages 1-3 but skips playlist creation and email, writing rendered HTML to `/tmp/monday-music-preview.html`.
+**4. Render static site**
+- `buildSiteHtml()` in `src/render.ts` → standalone HTML with three sections: Recent Favorites (top short-term artists/tracks), New Releases, Music News. No playlist section.
+- Written to `public/index.html`. `nginx:alpine` (see `Dockerfile` + `deploy/nginx.conf`) serves it on Fly.
 
 ## Key Types
 
@@ -115,13 +116,30 @@ interface CuratedBuckets { releases: CuratedRelease[]; news: CuratedRelease[] }
 
 ## Deployment
 
-The workflow runs automatically every Monday at 8:30am ET (`mikawvawn/monday-music` on GitHub). To trigger manually, use the GitHub API or Actions UI. All secrets are stored in GitHub repository secrets.
+The site is hosted on Fly as app **`monday-music-mv`** → https://monday-music-mv.fly.dev
+(nginx serving `public/index.html`, scaled to zero when idle).
+
+The GitHub Actions workflow (`.github/workflows/monday-music.yml`, repo `mikawvawn/monday-music`)
+runs every Monday at 8:30am ET: it regenerates `public/index.html` and runs `flyctl deploy`,
+so the site refreshes weekly with no dependency on any local machine. Trigger manually from the
+Actions tab (workflow_dispatch) or `gh workflow run "Monday Music"`. Secrets in GitHub: the four
+Spotify/Anthropic vars + `FLY_API_TOKEN` (Fly deploy token).
 
 To push source changes:
 ```bash
 npm run build  # catch TS errors locally first
 git push origin main
 ```
+
+## Session Notes (Jul 2026)
+
+### Session 2026-07-27 — Pivot: email → static site on Fly; killed the playlist
+
+- **Root cause of "won't run anymore":** the pipeline actually ran fine end-to-end; it only crashed on a final verification call (`getPlaylistTracks` → deprecated `GET /playlists/{id}/tracks` → 403). And the local `.env` had no `RESEND_API_KEY`, so the email step would have failed anyway.
+- **Killed the playlist entirely** (per user): removed `generatePlaylist`/`describePlaylist` (`claude.ts`) and `createPlaylist`/`addTracksToPlaylist`/`getPlaylistTracks`/`buildDiscoveryPool` (`spotify.ts`). Kept `interleaveByArtist` (still unit-tested) and the generic search helpers.
+- **Killed email:** deleted `email.ts` + `preview.ts`. New `src/render.ts` → `buildSiteHtml()` renders a standalone responsive page (Recent Favorites → New Releases → Music News). `src/index.ts` rewritten to fetch → curate → validate → write `public/index.html`.
+- **Hosting:** new Fly app `monday-music-mv` (nginx:alpine, `Dockerfile` + `deploy/nginx.conf`, `fly.toml`, scale-to-zero). First deploy done manually; weekly refresh via the rewritten GitHub Action (`FLY_API_TOKEN` secret added).
+- **Design reused** the editorial email markup verbatim (serif headers, numbered list, album art) — just dropped the playlist section and made the wrapper responsive.
 
 ## Session Notes (Apr 2026)
 

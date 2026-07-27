@@ -1,13 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Track } from "./spotify.js";
 import type { NewRelease } from "./newReleases.js";
-
-export interface PlaylistPlan {
-  name: string;
-  description: string;
-  theme: string;
-  discoveryArtists: string[]; // artist names for Spotify search
-}
 
 export interface CuratedRelease {
   artist: string;
@@ -43,85 +35,6 @@ function parseJson<T>(text: string): T {
   }
 }
 
-
-export async function generatePlaylist(
-  recentTracks: Track[],
-  topTracks: Track[],
-  recentPlaylistNames: string[],
-  tasteProfile: string
-): Promise<PlaylistPlan> {
-  const client = new Anthropic();
-
-  const recentArtists = [...new Set(recentTracks.map((t) => t.artist))].slice(0, 20).join(", ");
-  const topArtists = [...new Set(topTracks.map((t) => t.artist))].slice(0, 30).join(", ");
-
-  const prompt = `You are building a weekly music discovery playlist.
-
-${tasteProfile}
-
-His recent listening (last few days):
-${recentArtists}
-
-His top artists (medium term):
-${topArtists}
-
-His recent playlist names (avoid repeating the same genre thread):
-${recentPlaylistNames.slice(0, 5).join(", ") || "none yet"}
-
-Your job:
-1. Pick ONE genre thread that feels fresh relative to the recent playlist names.
-2. Suggest 7–9 artists that are similar to the listener's known artists but that they likely haven't heard much — one level under the obvious names. They should all fit the same genre thread. Do not include any artist already in their recent listening or top artists lists above.
-3. Come up with an evocative playlist name (something atmospheric, not just the genre name).
-
-Respond with ONLY valid JSON, no markdown:
-{
-  "name": "playlist name",
-  "description": "one sentence capturing the vibe",
-  "theme": "one word genre bucket: indie|brazilian|electronic|rnb",
-  "discoveryArtists": ["Artist Name 1", "Artist Name 2", "Artist Name 3"]
-}`;
-
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 400,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text = message.content[0].type === "text" ? message.content[0].text : "";
-  return parseJson<PlaylistPlan>(text);
-}
-
-/**
- * Write a short playlist description based on the actual ordered tracks.
- * Called after the energy-curve selection so the blurb reflects real content.
- */
-export async function describePlaylist(
-  tracks: Track[],
-  playlistName: string,
-  theme: string,
-): Promise<string> {
-  const client = new Anthropic();
-  const trackList = tracks.slice(0, 10).map((t) => `${t.artist} — ${t.name}`).join(", ");
-
-  const prompt = `Write a 1–2 sentence description for this Spotify playlist.
-
-Playlist name: "${playlistName}"
-Genre theme: ${theme}
-First 10 tracks: ${trackList}
-
-Style: Bandcamp Daily's matter-of-fact writeup style. State what the playlist is doing and why the tracks belong together. Be direct and specific — name the sound, reference 1–2 artists if it helps place it. No flowery language, no press-release tone.
-
-Respond with only the description text. No quotes, no markdown.`;
-
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 200,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text = message.content[0].type === "text" ? message.content[0].text : "";
-  return text.trim();
-}
 
 export interface CuratedBuckets {
   releases: CuratedRelease[];

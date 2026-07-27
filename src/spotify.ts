@@ -155,49 +155,6 @@ export async function getUserId(token: string): Promise<string> {
   return data.id;
 }
 
-export async function createPlaylist(
-  _userId: string,
-  name: string,
-  description: string,
-  token: string
-): Promise<{ id: string; url: string }> {
-  const res = await fetch(`${SPOTIFY_API}/me/playlists`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, description, public: false }),
-  });
-  if (!res.ok) throw new Error(`Create playlist failed: ${await res.text()}`);
-  const data = (await res.json()) as { id: string; external_urls: { spotify: string } };
-  return { id: data.id, url: data.external_urls.spotify };
-}
-
-export async function addTracksToPlaylist(
-  playlistId: string,
-  trackIds: string[],
-  token: string,
-  attempt = 0
-): Promise<void> {
-  const uris = trackIds.map((id) => `spotify:track:${id}`);
-  await sleep(1000); // brief pause after playlist creation
-  const res = await fetch(`${SPOTIFY_API}/playlists/${encodeURIComponent(playlistId)}/items`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ uris }),
-  });
-  if (res.status === 429 || res.status >= 500) {
-    if (attempt >= 3) throw new Error(`Add tracks failed after retries: ${await res.text()}`);
-    await sleep((attempt + 1) * 2000);
-    return addTracksToPlaylist(playlistId, trackIds, token, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`Add tracks failed (${res.status}): ${await res.text()}`);
-}
-
 /** Fetch user's top artists (medium term) with genre data. Uses user-top-read scope. */
 export async function getTopArtistsWithGenres(token: string): Promise<Record<string, string[]>> {
   const data = await getTopArtists(token, "medium_term");
@@ -321,16 +278,6 @@ export async function searchAlbumArt(
 
 
 /** Fetch track IDs from an existing playlist (first 100 tracks). */
-export async function getPlaylistTracks(playlistId: string, token: string): Promise<string[]> {
-  const data = (await spotifyGet(
-    `/playlists/${encodeURIComponent(playlistId)}/tracks?fields=items(track(id))&limit=100`,
-    token,
-  )) as { items: { track: { id: string } | null }[] };
-  return (data.items ?? [])
-    .map((i) => i.track?.id ?? "")
-    .filter(Boolean);
-}
-
 /** Search Spotify for an artist by name, returns the best match or null. */
 export async function searchArtist(name: string, token: string): Promise<ArtistSummary | null> {
   const data = (await spotifyGet(
@@ -365,39 +312,6 @@ export async function searchTracksByArtist(artistName: string, token: string, li
     album: t.album.name,
     url: t.external_urls.spotify,
   }));
-}
-
-/**
- * Build a discovery track pool from a list of artist names Claude suggested.
- * Uses search (the only broadly available Spotify endpoint) to find tracks per artist.
- */
-export async function buildDiscoveryPool(
-  discoveryArtistNames: string[],
-  token: string,
-  tracksPerArtist = 3,
-): Promise<Track[]> {
-  // Search for tracks by each artist in parallel
-  const trackLists = await Promise.all(
-    discoveryArtistNames.map((name) =>
-      searchTracksByArtist(name, token, tracksPerArtist).then(
-        (tracks) => { console.log(`  "${name}" → ${tracks.length} tracks`); return tracks; },
-        (err) => { console.warn(`  "${name}" search error:`, err.message); return [] as Track[]; },
-      ),
-    ),
-  );
-
-  // Flatten and deduplicate by track ID
-  const seen = new Set<string>();
-  const pool: Track[] = [];
-  for (const tracks of trackLists) {
-    for (const t of tracks) {
-      if (!seen.has(t.id)) {
-        seen.add(t.id);
-        pool.push(t);
-      }
-    }
-  }
-  return pool;
 }
 
 /**

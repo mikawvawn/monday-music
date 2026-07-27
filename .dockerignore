@@ -1,0 +1,15 @@
+node_modules
+dist
+src
+.git
+.github
+.claude
+notes
+tmp
+scripts
+upbeat-brahmagupta-1ee9a3
+*.md
+.env
+.env.*
+tsconfig.json
+package*.json

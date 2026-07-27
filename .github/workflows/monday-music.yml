@@ -2,16 +2,13 @@ name: Monday Music
 
 on:
   schedule:
-    - cron: "30 13 * * 1"  # 8:30am ET (UTC-5) every Monday
-  workflow_dispatch:
-    inputs:
-      preview:
-        description: "Generate preview HTML only (no playlist, no email)"
-        type: boolean
-        default: false
+    - cron: "30 13 * * 1" # 8:30am ET (UTC-5) every Monday
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+concurrency: monday-music-deploy
 
 jobs:
-  generate-playlist:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,32 +19,26 @@ jobs:
           cache: "npm"
 
       - run: npm ci
-
       - run: npm run build
 
-      - name: Run (full)
-        if: ${{ inputs.preview != true }}
+      - name: Generate site (public/index.html)
         run: node dist/index.js
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
-      - name: Run (preview)
-        if: ${{ inputs.preview == true }}
-        run: node dist/preview.js
-        env:
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Upload preview
-        if: ${{ inputs.preview == true }}
+      - name: Archive generated site
         uses: actions/upload-artifact@v4
         with:
-          name: email-preview
-          path: /tmp/monday-music-preview.html
-          retention-days: 3
+          name: monday-music-site
+          path: public/index.html
+          retention-days: 7
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
