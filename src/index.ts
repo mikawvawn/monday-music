@@ -10,6 +10,7 @@ import {
 import { curateNewReleases, curateMoreReleases } from "./claude.js";
 import { buildTasteProfile } from "./profile.js";
 import { buildSiteHtml } from "./render.js";
+import { sendDigestEmail } from "./email.js";
 import { fetchNewReleases } from "./newReleases.js";
 import { enrichAndFilterReleases, filterNewsByReleaseArtists, dedupeReleasesByArtist } from "./enrichReleases.js";
 
@@ -84,6 +85,8 @@ async function run() {
   mkdirSync(dirname(OUT_PATH), { recursive: true });
   writeFileSync(OUT_PATH, html);
   console.log(`Site written to ${OUT_PATH} (${(html.length / 1024).toFixed(1)} KB)`);
+
+  await sendDigestEmail(html);
   console.log("Done!");
 }
 
